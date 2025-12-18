@@ -18,13 +18,9 @@ logger = logging.getLogger(__name__)
 COMMANDS = [
     ("help", "도움말 표시"),
     ("history", "현재 세션 히스토리 표시"),
-    ("clear", "새 세션 시작"),
+    ("clear", "히스토리 초기화"),
     ("exit", "프로그램 종료"),
-    ("search", "키워드로 검색"),
     ("find", "비슷한 의미로 검색"),
-    ("sessions", "이전 세션 목록"),
-    ("load", "이전 세션 불러오기"),
-    ("new", "새 세션 시작"),
 ]
 
 
@@ -46,21 +42,15 @@ def main():
     console.print("[bold cyan]CLI Master[/bold cyan]")
     console.print("[dim]저장소 초기화 중...[/dim]")
 
-    # 히스토리 초기화 (SQLite + Vector DB 자동 연결)
+    # 히스토리 초기화 (VectorDB)
     history = InputHistory()
     handler = CommandHandler(console, history)
 
-    console.print(
-        f"[dim]세션: {history.session.id[:8]}... | 저장된 메시지: {len(history)}개[/dim]"
-    )
     console.print("[dim]Ctrl+C: 현재 입력 취소 | /: 명령어 보기[/dim]\n")
 
-    # 자동완성 및 방향키 히스토리 설정
+    # 자동완성 설정
     completer = SlashCompleter(COMMANDS)
-    # 기존 세션의 입력들을 프롬프트 히스토리에 미리 채워 넣기
     cli_history = InMemoryHistory()
-    for item in history.get_all():
-        cli_history.append_string(item)
 
     session = PromptSession(
         "> ",
