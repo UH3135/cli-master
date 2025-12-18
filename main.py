@@ -5,11 +5,12 @@ import logging
 from rich.console import Console
 from prompt_toolkit import PromptSession
 from prompt_toolkit.styles import Style
-from prompt_toolkit.history import InMemoryHistory
 
+from src.config import config
 from src.history import InputHistory
 from src.commands import CommandHandler
 from src.completer import SlashCompleter
+from src.storage import SqlHistory
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -48,9 +49,9 @@ def main():
 
     console.print("[dim]Ctrl+C: 현재 입력 취소 | /: 명령어 보기[/dim]\n")
 
-    # 자동완성 설정
+    # 자동완성 및 SQL 히스토리 설정
     completer = SlashCompleter(COMMANDS)
-    cli_history = InMemoryHistory()
+    cli_history = SqlHistory(config.DATABASE_URL)
 
     session = PromptSession(
         "> ",
