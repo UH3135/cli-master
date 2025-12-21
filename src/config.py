@@ -12,5 +12,8 @@ class Config:
     # 데이터베이스 연결 문자열
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///history.db")
 
+    # Google AI API 키 (Gemini)
+    GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
+
 
 config = Config()
