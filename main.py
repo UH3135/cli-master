@@ -11,6 +11,7 @@ from src.history import InputHistory
 from src.commands import CommandHandler
 from src.completer import SlashCompleter
 from src.storage import SqlHistory
+from src import agent
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -70,7 +71,10 @@ def main():
                 handler.handle(user_input)
             elif user_input.strip():
                 history.add(user_input)
-                console.print(f"[dim]입력됨: {user_input}[/dim]")
+                console.print("[bold cyan]AI:[/bold cyan] ", end="")
+                for chunk in agent.stream(user_input):
+                    console.print(chunk, end="")
+                console.print()
 
         except KeyboardInterrupt:
             # Ctrl+C: 현재 입력 무시하고 계속
