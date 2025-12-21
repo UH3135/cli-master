@@ -2,8 +2,23 @@
 
 from deepagents import create_deep_agent
 from langchain.chat_models import init_chat_model
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 from .config import config
+
+# provider 매핑 (모델명 prefix -> factory 함수)
+PROVIDER_MAP = {
+    "gemini": lambda model, **kwargs: ChatGoogleGenerativeAI(model=model, **kwargs),
+}
+
+
+def create_chat_model(model_name: str, **kwargs):
+    """모델명 prefix로 provider 결정"""
+    for prefix, factory in PROVIDER_MAP.items():
+        if model_name.startswith(prefix):
+            return factory(model_name, **kwargs)
+    # fallback: init_chat_model 자동 추론
+    return init_chat_model(model=model_name, **kwargs)
 
 DEFAULT_SYSTEM_PROMPT = """당신은 CLI Master의 AI 어시스턴트입니다.
 사용자의 질문에 친절하고 정확하게 답변해주세요.
@@ -17,8 +32,8 @@ def _get_agent():
     """싱글톤 agent 인스턴스 반환 (지연 초기화)"""
     global _agent
     if _agent is None:
-        model = init_chat_model(
-            model=config.MODEL_NAME,
+        model = create_chat_model(
+            model_name=config.MODEL_NAME,
             temperature=config.MODEL_TEMPERATURE,
         )
         _agent = create_deep_agent(
