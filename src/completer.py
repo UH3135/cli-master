@@ -4,19 +4,15 @@ from typing import Iterable
 
 from prompt_toolkit.completion import Completer, Completion
 
+from .commands import _commands
+
 
 class SlashCompleter(Completer):
     """슬래시 명령어 자동완성
 
     - '/' 로 시작하는 입력만 자동완성 대상
-    - COMMANDS 리스트를 받아서 사용 (느슨한 결합)
+    - commands 모듈의 레지스트리를 사용
     """
-
-    def __init__(self, commands: list[tuple[str, str]]):
-        """
-        :param commands: (명령어, 설명) 튜플 리스트
-        """
-        self.commands = commands
 
     def get_completions(self, document, complete_event) -> Iterable[Completion]:
         text = document.text_before_cursor
@@ -28,7 +24,7 @@ class SlashCompleter(Completer):
         # '/' 이후 입력된 텍스트
         cmd_text = text[1:].lower()
 
-        for cmd, desc in self.commands:
+        for cmd, (_, desc) in _commands.items():
             if cmd.startswith(cmd_text):
                 yield Completion(
                     cmd,

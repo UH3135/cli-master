@@ -16,16 +16,6 @@ from src import agent
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 명령어 정의 (명령어, 설명)
-COMMANDS = [
-    ("help", "도움말 표시"),
-    ("history", "현재 세션 히스토리 표시"),
-    ("clear", "히스토리 초기화"),
-    ("exit", "프로그램 종료"),
-    ("find", "비슷한 의미로 검색"),
-]
-
-
 # prompt_toolkit 스타일 정의
 prompt_style = Style.from_dict(
     {
@@ -42,16 +32,15 @@ def main():
     console = Console()
 
     console.print("[bold cyan]CLI Master[/bold cyan]")
-    console.print("[dim]저장소 초기화 중...[/dim]")
 
-    # 히스토리 초기화 (VectorDB)
+    # 히스토리 초기화
     history = InputHistory()
     handler = CommandHandler(console, history)
 
     console.print("[dim]Ctrl+C: 현재 입력 취소 | /: 명령어 보기[/dim]\n")
 
     # 자동완성 및 SQL 히스토리 설정
-    completer = SlashCompleter(COMMANDS)
+    completer = SlashCompleter()
     cli_history = SqlHistory(config.DATABASE_URL)
 
     session = PromptSession(
