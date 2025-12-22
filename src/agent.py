@@ -70,9 +70,37 @@ def chat(message: str) -> str:
 
 
 def stream(message: str):
-    """스트리밍 응답 생성"""
+    """스트리밍 응답 생성
+
+    Yields:
+        tuple: (event_type, data)
+        - ("tool_start", {"name": str, "args": str}): 도구 호출 시작
+        - ("tool_end", {"name": str, "result": str}): 도구 완료
+        - ("response", str): 최종 응답
+    """
     for chunk in _get_agent().stream({
         "messages": [{"role": "user", "content": message}]
     }):
+        # 모델 응답 처리
         if "model" in chunk and "messages" in chunk["model"]:
-            yield chunk["model"]["messages"][-1].content
+            msg = chunk["model"]["messages"][-1]
+            additional = getattr(msg, "additional_kwargs", {})
+
+            if "function_call" in additional:
+                # 도구 호출 시작
+                fc = additional["function_call"]
+                yield ("tool_start", {
+                    "name": fc.get("name", "unknown"),
+                    "args": fc.get("arguments", "")
+                })
+            elif hasattr(msg, "content") and msg.content:
+                # 최종 응답 (text 속성으로 자동 추출)
+                yield ("response", msg.text)
+
+        # 도구 실행 결과
+        if "tools" in chunk and "messages" in chunk["tools"]:
+            tool_msg = chunk["tools"]["messages"][-1]
+            yield ("tool_end", {
+                "name": getattr(tool_msg, "name", "unknown"),
+                "result": getattr(tool_msg, "content", "")
+            })
