@@ -69,7 +69,10 @@ def main():
             elif user_input.strip():
                 console.print("[bold cyan]AI:[/bold cyan] ", end="")
                 for chunk in agent.stream(user_input):
-                    console.print(chunk, end="")
+                    if isinstance(chunk, dict):
+                        console.print(chunk.get("text", ""), end="")
+                    else:
+                        console.print(chunk, end="")
                 console.print()
 
         except KeyboardInterrupt:
