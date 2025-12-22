@@ -39,14 +39,14 @@ def main():
     handler = CommandHandler(console, history)
     completer = SlashCompleter()
 
-    console.print("[dim]Ctrl+C: 현재 입력 취소 | Shift+Enter: 줄바꿈 | /: 명령어 보기[/dim]\n")
+    console.print("[dim]Ctrl+C: 현재 입력 취소 | Enter: 제출 | Alt+Enter: 줄바꿈 | /: 명령어 보기[/dim]\n")
 
-    # 키 바인딩 설정: Enter=제출, Shift+Enter=줄바꿈
+    # 키 바인딩 설정: Enter=제출, Alt+Enter=줄바꿈
     bindings = KeyBindings()
 
-    @bindings.add("s-enter")
+    @bindings.add("escape", "enter")
     def _(event):
-        """Shift+Enter: 줄바꿈 삽입"""
+        """Alt+Enter: 줄바꿈 삽입"""
         event.current_buffer.insert_text("\n")
 
     session = PromptSession(
@@ -55,7 +55,7 @@ def main():
         completer=completer,
         complete_while_typing=True,
         history=history,
-        multiline=True,
+        multiline=False,
         key_bindings=bindings,
     )
 

@@ -25,10 +25,15 @@ class CommandHandler:
         self.console = console
         self.history = history
         self._running = True
+        self._debug = False
 
     @property
     def running(self) -> bool:
         return self._running
+
+    @property
+    def debug(self) -> bool:
+        return self._debug
 
     def handle(self, command: str) -> bool:
         """명령어 처리. 알려진 명령어면 True 반환"""
