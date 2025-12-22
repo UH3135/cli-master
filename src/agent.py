@@ -57,5 +57,5 @@ def stream(message: str):
     for chunk in _get_agent().stream({
         "messages": [{"role": "user", "content": message}]
     }):
-        if "messages" in chunk and chunk["messages"]:
-            yield chunk["messages"][-1].content
+        if "model" in chunk and "messages" in chunk["model"]:
+            yield chunk["model"]["messages"][-1].content
