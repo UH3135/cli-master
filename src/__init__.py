@@ -1,5 +1,5 @@
 # src 패키지 초기화
-from .history import InputHistory
+from .history import SqlHistory
 from .commands import CommandHandler
 
-__all__ = ["InputHistory", "CommandHandler"]
+__all__ = ["SqlHistory", "CommandHandler"]

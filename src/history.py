@@ -1,59 +1,102 @@
-"""입력 히스토리 관리"""
-import logging
-from typing import Optional
+"""SQLAlchemy 기반 프롬프트 히스토리 저장소"""
+import uuid
+from datetime import datetime
+from typing import Iterable
 
-from .models import Message
-from .storage import VectorStore
+from prompt_toolkit.history import History
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, desc
+from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
-logger = logging.getLogger(__name__)
+Base = declarative_base()
 
 
-class InputHistory:
-    """입력 히스토리를 저장하고 관리하는 클래스 (VectorDB 기반)"""
+class HistoryEntry(Base):
+    """히스토리 항목 모델"""
+    __tablename__ = "history"
 
-    def __init__(self, vector_store: Optional[VectorStore] = None):
-        # Vector 저장소 초기화
-        self.vector = vector_store or VectorStore()
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String, nullable=False, index=True)
+    content = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.now)
 
-        # 메모리 캐시 (현재 세션의 메시지)
-        self._cache: list[Message] = []
-        logger.debug("InputHistory 초기화 - 메시지 수: %s", len(self._cache))
+    def __repr__(self) -> str:
+        return f"<HistoryEntry(id={self.id}, session_id='{self.session_id}', content='{self.content[:20]}...')>"
 
-    def add(self, text: str) -> None:
-        """히스토리에 입력 추가"""
-        if not text.strip():
-            return
 
-        # 메시지 생성
-        message = Message(content=text)
+class SqlHistory(History):
+    """
+    SQLAlchemy 기반 프롬프트 히스토리
 
-        # Vector DB에 저장
-        self.vector.add_message(message)
+    prompt_toolkit의 History를 상속받아 방향키 탐색 기능 지원
+    세션별로 히스토리를 분리하여 관리
 
-        # 캐시에 추가
-        self._cache.append(message)
-        logger.debug("입력 추가됨: %s", text)
+    사용법:
+        # 새 세션 (자동 UUID 생성)
+        history = SqlHistory("sqlite:///history.db")
 
-    def get_all(self) -> list[str]:
-        """전체 히스토리 반환 (텍스트만)"""
-        return [msg.content for msg in self._cache]
+        # 기존 세션 이어서 사용
+        history = SqlHistory("sqlite:///history.db", session_id="existing-id")
+    """
 
-    def get_messages(self) -> list[Message]:
-        """전체 메시지 객체 반환"""
-        return self._cache.copy()
+    def __init__(self, connection_string: str = "sqlite:///history.db", session_id: str | None = None):
+        super().__init__()
+        self.engine = create_engine(connection_string)
+        Base.metadata.create_all(self.engine)
+        self._session_factory = sessionmaker(bind=self.engine)
+        self.session_id = session_id or str(uuid.uuid4())
+
+    def _get_session(self) -> Session:
+        """DB 세션 생성"""
+        return self._session_factory()
+
+    def load_history_strings(self) -> Iterable[str]:
+        """
+        현재 세션의 히스토리 로드 (역순으로 반환)
+
+        prompt_toolkit이 시작 시 호출하여 방향키 탐색에 사용
+        """
+        with self._get_session() as session:
+            entries = session.query(HistoryEntry).filter(
+                HistoryEntry.session_id == self.session_id
+            ).order_by(desc(HistoryEntry.id)).all()
+            return [entry.content for entry in entries]
+
+    def store_string(self, string: str) -> None:
+        """
+        새 입력 저장
+
+        prompt_toolkit이 사용자 입력 후 자동 호출
+        """
+        with self._get_session() as session:
+            entry = HistoryEntry(session_id=self.session_id, content=string)
+            session.add(entry)
+            session.commit()
 
     def clear(self) -> None:
-        """현재 세션 히스토리 초기화"""
-        self._cache.clear()
-        logger.debug("히스토리 초기화됨")
+        """현재 세션의 히스토리 삭제"""
+        with self._get_session() as session:
+            session.query(HistoryEntry).filter(
+                HistoryEntry.session_id == self.session_id
+            ).delete()
+            session.commit()
 
-    def find_similar(self, query: str, limit: int = 5) -> list[dict]:
-        """의미 기반 검색 (Vector DB)"""
-        return self.vector.search(query, limit)
+    def get_all(self) -> list[str]:
+        """현재 세션의 히스토리 조회 (시간순)"""
+        with self._get_session() as session:
+            entries = session.query(HistoryEntry).filter(
+                HistoryEntry.session_id == self.session_id
+            ).order_by(HistoryEntry.id).all()
+            return [entry.content for entry in entries]
 
-    def __len__(self) -> int:
-        return len(self._cache)
-
-    def close(self) -> None:
-        """리소스 정리"""
-        pass
+    def search(self, keyword: str) -> list[HistoryEntry]:
+        """현재 세션에서 키워드로 히스토리 검색"""
+        with self._get_session() as session:
+            entries = session.query(HistoryEntry).filter(
+                HistoryEntry.session_id == self.session_id,
+                HistoryEntry.content.contains(keyword)
+            ).order_by(desc(HistoryEntry.created_at)).all()
+            # 세션 종료 전에 데이터 복사
+            return [
+                HistoryEntry(id=e.id, session_id=e.session_id, content=e.content, created_at=e.created_at)
+                for e in entries
+            ]

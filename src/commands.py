@@ -4,7 +4,7 @@ from typing import Callable
 from rich.console import Console
 from rich.table import Table
 
-from .history import InputHistory
+from .history import SqlHistory
 
 # 모듈 레벨 명령어 레지스트리: {name: (handler, description)}
 _commands: dict[str, tuple[Callable, str]] = {}
@@ -21,7 +21,7 @@ def command(name: str, description: str = ""):
 class CommandHandler:
     """슬래시 명령어를 처리하는 클래스"""
 
-    def __init__(self, console: Console, history: InputHistory):
+    def __init__(self, console: Console, history: SqlHistory):
         self.console = console
         self.history = history
         self._running = True
@@ -83,5 +83,4 @@ class CommandHandler:
     def _exit(self) -> None:
         """프로그램 종료"""
         self._running = False
-        self.history.close()
         self.console.print("[blue]프로그램을 종료합니다[/blue]")
