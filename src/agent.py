@@ -1,6 +1,7 @@
 """AI 에이전트 모듈 - Deep Agents + 멀티 Provider 지원"""
 
 from deepagents import create_deep_agent
+from deepagents.backends import FilesystemBackend
 from langchain.chat_models import init_chat_model
 from langchain_google_genai import ChatGoogleGenerativeAI
 
@@ -35,7 +36,6 @@ DEFAULT_SYSTEM_PROMPT = """당신은 CLI Master의 AI 어시스턴트입니다.
 - `edit_file`: 파일 편집
 - `glob`: 파일 패턴 검색
 - `grep`: 파일 내용 검색
-- `execute`: 쉘 명령어 실행
 
 ## 응답 지침
 - 사용자의 질문에 친절하고 정확하게 답변하세요.
@@ -56,7 +56,7 @@ def _get_agent():
         _agent = create_deep_agent(
             model=model,
             system_prompt=DEFAULT_SYSTEM_PROMPT,
-            tools=[],
+            backend=FilesystemBackend(),
         )
     return _agent
 
@@ -94,8 +94,9 @@ def stream(message: str):
                     "args": fc.get("arguments", "")
                 })
             elif hasattr(msg, "content") and msg.content:
-                # 최종 응답 (text 속성으로 자동 추출)
-                yield ("response", msg.text)
+                # 최종 응답 (text 또는 content 사용)
+                response_text = getattr(msg, "text", None) or msg.content
+                yield ("response", response_text)
 
         # 도구 실행 결과
         if "tools" in chunk and "messages" in chunk["tools"]:
