@@ -91,6 +91,7 @@ def main():
 
                 if final_response:
                     console.print(f"[bold cyan]AI:[/bold cyan] {final_response}")
+                    history.store_ai_response(final_response)
 
         except KeyboardInterrupt:
             # Ctrl+C: 현재 입력 무시하고 계속

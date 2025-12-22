@@ -63,18 +63,24 @@ class CommandHandler:
 
     @command("history", "현재 세션 히스토리 표시")
     def _show_history(self) -> None:
-        """히스토리 출력"""
-        items = self.history.get_all()
+        """히스토리 출력 (user와 ai 구분)"""
+        items = self.history.get_all_with_role()
         if not items:
             self.console.print("[yellow]히스토리가 비어있습니다[/yellow]")
             return
 
-        table = Table(title="입력 히스토리")
-        table.add_column("#", style="dim")
-        table.add_column("입력", style="white")
+        table = Table(title="대화 히스토리")
+        table.add_column("#", style="dim", width=4)
+        table.add_column("역할", style="bold", width=6)
+        table.add_column("내용", style="white")
 
-        for idx, item in enumerate(items, 1):
-            table.add_row(str(idx), item)
+        for idx, (role, content) in enumerate(items, 1):
+            if role == 'user':
+                role_display = "[cyan]사용자[/cyan]"
+            else:  # ai
+                role_display = "[green]AI[/green]"
+
+            table.add_row(str(idx), role_display, content)
 
         self.console.print(table)
 
