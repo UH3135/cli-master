@@ -63,6 +63,17 @@ def _get_agent():
 
 def chat(message: str) -> str:
     """메시지를 보내고 응답을 받음"""
+    # Vector DB로 도구 추천
+    try:
+        from .tool_selector import get_tool_selector
+        selector = get_tool_selector()
+        tool_hint = selector.get_tool_prompt_hint(message, top_k=3)
+        if tool_hint:
+            message = message + tool_hint
+    except Exception:
+        # 도구 선택 실패 시 원본 메시지 사용
+        pass
+
     result = _get_agent().invoke({
         "messages": [{"role": "user", "content": message}]
     })
@@ -78,6 +89,17 @@ def stream(message: str):
         - ("tool_end", {"name": str, "result": str}): 도구 완료
         - ("response", str): 최종 응답
     """
+    # Vector DB로 도구 추천
+    try:
+        from .tool_selector import get_tool_selector
+        selector = get_tool_selector()
+        tool_hint = selector.get_tool_prompt_hint(message, top_k=3)
+        if tool_hint:
+            message = message + tool_hint
+    except Exception:
+        # 도구 선택 실패 시 원본 메시지 사용
+        pass
+
     for chunk in _get_agent().stream({
         "messages": [{"role": "user", "content": message}]
     }):
