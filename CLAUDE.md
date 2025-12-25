@@ -11,14 +11,65 @@
 ```
 main.py          # 진입점 (조립만)
 src/
+  agent.py       # AI 에이전트 (LangGraph 기반)
   commands.py    # 명령어 처리
   history.py     # 히스토리 관리
   models.py      # 데이터 모델
   completer.py   # 자동완성
-  storage/       # 저장소 구현
+  config.py      # 설정 관리
+```
+
+## AI 에이전트 아키텍처 (src/agent.py)
+
+### LangGraph 기반 ReAct Agent
+- **프레임워크**: LangGraph (Deep Agents에서 마이그레이션)
+- **목적**: 코드 투명성, 커스터마이징 용이성, 디버깅 개선
+
+### Graph 구조
+```
+[Start] → Agent 노드 → (도구 필요?) → Tools 노드 → Agent 노드 → ... → [End]
+                         ↓ (응답 완료)
+                        [End]
+```
+
+### 핵심 컴포넌트
+
+#### 1. State 정의
+```python
+class AgentState(TypedDict):
+    """LangGraph 에이전트 상태"""
+    messages: Annotated[Sequence[BaseMessage], add]
+```
+
+#### 2. Graph 노드
+- **call_model**: 에이전트 노드 - 도구와 함께 모델 호출
+- **execute_tools**: 도구 노드 - 요청된 도구 실행
+- **should_continue**: 라우팅 로직 - 도구 필요 여부 판단
+
+#### 3. 도구 (Tools)
+- **LangChain 통합 도구**: read_file, write_file, list_directory, file_search, copy_file, move_file, file_delete
+- **커스텀 도구**: edit_file, grep
+
+#### 4. 스트리밍
+- **이벤트 타입**:
+  - `tool_start`: 도구 호출 시작
+  - `tool_end`: 도구 완료
+  - `response`: 최종 응답
+- **비동기 처리**: astream_events를 동기 제너레이터로 변환
+
+### 공개 API
+```python
+def chat(message: str) -> str:
+    """동기 메시지 처리"""
+
+def stream(message: str):
+    """스트리밍 응답 생성
+    Yields: (event_type, data)
+    """
 ```
 
 ## 코딩 컨벤션
 - 주석은 한국어로 작성
 - 로그 포맷팅은 `%s` 사용 (f-string 금지)
 - 패키지 관리는 uv 사용
+- 모든 docstring은 한국어로 작성
