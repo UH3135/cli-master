@@ -16,6 +16,7 @@ dependencies = [
     "python-dotenv>=1.2.1",
     "rich>=14.2.0",
     "sqlalchemy>=2.0.45",
+    "loguru>=0.7.0",
 ]
 
 [project.optional-dependencies]
