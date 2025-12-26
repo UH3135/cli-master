@@ -1,14 +1,12 @@
 """SQLAlchemy 기반 프롬프트 히스토리 저장소"""
-import logging
 import uuid
 from datetime import datetime
 from typing import Iterable
 
+from loguru import logger
 from prompt_toolkit.history import History
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, desc, text
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
-
-logger = logging.getLogger(__name__)
 
 Base = declarative_base()
 

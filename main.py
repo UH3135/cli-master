@@ -1,7 +1,5 @@
 """CLI Master - 대화 세션을 저장하는 CLI 도구"""
 
-import logging
-
 from rich.console import Console
 from rich.live import Live
 from rich.text import Text
@@ -13,11 +11,8 @@ from src.config import config
 from src.history import SqlHistory
 from src.commands import CommandHandler
 from src.completer import SlashCompleter
+from src.log import setup_logging
 from src import agent
-
-logging.basicConfig(level=logging.INFO)
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logger = logging.getLogger(__name__)
 
 # prompt_toolkit 스타일 정의
 prompt_style = Style.from_dict(
@@ -32,6 +27,7 @@ prompt_style = Style.from_dict(
 
 
 def main():
+    setup_logging()
     console = Console()
 
     console.print("[bold cyan]CLI Master[/bold cyan]")
