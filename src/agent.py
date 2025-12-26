@@ -1,8 +1,9 @@
 """AI 에이전트 모듈 - LangGraph ReAct Agent"""
 
-import logging
 from typing import TypedDict, Annotated, Sequence
 from operator import add
+
+from loguru import logger
 
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage
 from langchain.chat_models import init_chat_model
@@ -12,9 +13,6 @@ from langchain_core.tools import tool
 from langgraph.graph import StateGraph, END
 
 from .config import config
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # provider 매핑 (모델명 prefix -> factory 함수)
 PROVIDER_MAP = {
@@ -154,7 +152,7 @@ def _get_graph():
         all_tools = toolkit_tools + custom_tools
 
         _tools_by_name = {tool.name: tool for tool in all_tools}
-        logger.info("Loaded %s tools: %s", len(all_tools), list(_tools_by_name.keys()))
+        logger.info("Loaded {} tools: {}", len(all_tools), list(_tools_by_name.keys()))
 
         # 3. 모델에 도구 바인딩
         model_with_tools = model.bind_tools(all_tools)
@@ -200,7 +198,7 @@ def _get_graph():
                         name=tool_call["name"]
                     ))
                 except Exception as e:
-                    logger.error("Tool execution error: %s", str(e))
+                    logger.error("Tool execution error: {}", str(e))
                     tool_messages.append(ToolMessage(
                         content=f"오류: {str(e)}",
                         tool_call_id=tool_call["id"],
