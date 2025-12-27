@@ -5,21 +5,22 @@
 ### main.py
 - **조립(Composition) 전용**: main.py는 모듈을 조립하고 실행하는 역할만 수행
 - 비즈니스 로직 작성 금지
-- 새로운 기능은 반드시 src/ 하위 모듈에 구현
+- 새로운 기능은 반드시 cli_master/ 하위 모듈에 구현
 
 ### 프로젝트 구조
 ```
-main.py          # 진입점 (조립만)
-src/
+cli_master/
+  main.py        # 진입점 (조립만)
   agent.py       # AI 에이전트 (LangGraph 기반)
   commands.py    # 명령어 처리
   history.py     # 히스토리 관리
   models.py      # 데이터 모델
   completer.py   # 자동완성
   config.py      # 설정 관리
+  tools.py       # 커스텀 도구
 ```
 
-## AI 에이전트 아키텍처 (src/agent.py)
+## AI 에이전트 아키텍처 (cli_master/agent.py)
 
 ### LangGraph 기반 ReAct Agent
 - **프레임워크**: LangGraph (Deep Agents에서 마이그레이션)
@@ -48,7 +49,7 @@ class AgentState(TypedDict):
 
 #### 3. 도구 (Tools)
 - **LangChain 통합 도구**: read_file, write_file, list_directory, file_search, copy_file, move_file, file_delete
-- **커스텀 도구**: edit_file, grep
+- **커스텀 도구**: cat, tree, grep
 
 #### 4. 스트리밍
 - **이벤트 타입**:
@@ -73,3 +74,9 @@ def stream(message: str):
 - 로그 포맷팅은 `%s` 사용 (f-string 금지)
 - 패키지 관리는 uv 사용
 - 모든 docstring은 한국어로 작성
+
+## Code Quality & Testing
+- **Lint**: `uv run ruff check .` / `uv run ruff format .`
+- **Type checking**: `uv run mypy cli_master`
+- **Run tests**: `uv run pytest tests/`
+- **Pre-commit hooks**: `uv run pre-commit run --all-files`

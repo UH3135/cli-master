@@ -1,4 +1,5 @@
 """로깅 설정 모듈"""
+
 from pathlib import Path
 
 from loguru import logger

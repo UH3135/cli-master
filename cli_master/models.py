@@ -1,4 +1,5 @@
 """데이터 모델 정의"""
+
 from dataclasses import dataclass, field
 from datetime import datetime
 import uuid
@@ -7,6 +8,7 @@ import uuid
 @dataclass
 class Message:
     """입력 메시지"""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     session_id: str = ""
     content: str = ""
