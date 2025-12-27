@@ -19,7 +19,16 @@ dependencies = [
     "loguru>=0.7.0",
 ]
 
+[project.scripts]
+cli-master = "cli_master.main:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
 ]
+
+[tool.uv]
+package = true
+
+[tool.setuptools]
+packages = ["cli_master"]

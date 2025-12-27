@@ -7,12 +7,12 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.styles import Style
 from prompt_toolkit.key_binding import KeyBindings
 
-from src.config import config
-from src.history import SqlHistory
-from src.commands import CommandHandler
-from src.completer import SlashCompleter
-from src.log import setup_logging
-from src import agent
+from .config import config
+from .history import SqlHistory
+from .commands import CommandHandler
+from .completer import SlashCompleter
+from .log import setup_logging
+from . import agent
 
 # prompt_toolkit 스타일 정의
 prompt_style = Style.from_dict(
