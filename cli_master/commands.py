@@ -1,4 +1,5 @@
 """슬래시 명령어 처리"""
+
 from typing import Callable
 
 from rich.console import Console
@@ -12,9 +13,11 @@ _commands: dict[str, tuple[Callable, str]] = {}
 
 def command(name: str, description: str = ""):
     """명령어 등록 데코레이터"""
+
     def decorator(func: Callable):
         _commands[name] = (func, description)
         return func
+
     return decorator
 
 
@@ -75,7 +78,7 @@ class CommandHandler:
         table.add_column("내용", style="white")
 
         for idx, (role, content) in enumerate(items, 1):
-            if role == 'user':
+            if role == "user":
                 role_display = "[cyan]사용자[/cyan]"
             else:  # ai
                 role_display = "[green]AI[/green]"

@@ -18,7 +18,7 @@ def cat(file_path: str) -> str:
         파일 내용 또는 오류 메시지
     """
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             content = f.read()
         return content
     except FileNotFoundError:
@@ -40,6 +40,7 @@ def tree(path: str = ".", max_depth: int = 3) -> str:
     Returns:
         디렉토리 트리 구조
     """
+
     def build_tree(dir_path: str, prefix: str = "", depth: int = 0) -> list:
         if depth >= max_depth:
             return []
@@ -51,8 +52,8 @@ def tree(path: str = ".", max_depth: int = 3) -> str:
             return [f"{prefix}[권한 없음]"]
 
         # 숨김 파일/디렉토리 및 일반적인 제외 항목 필터링
-        exclude = {'.git', '__pycache__', 'node_modules', '.venv', 'venv'}
-        entries = [e for e in entries if e not in exclude and not e.startswith('.')]
+        exclude = {".git", "__pycache__", "node_modules", ".venv", "venv"}
+        entries = [e for e in entries if e not in exclude and not e.startswith(".")]
 
         for i, entry in enumerate(entries):
             is_last = i == len(entries) - 1
@@ -98,12 +99,10 @@ def grep(pattern: str, path: str = ".", file_pattern: str = "*") -> str:
     for file_path in glob_module.glob(search_pattern, recursive=True):
         if os.path.isfile(file_path):
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(file_path, "r", encoding="utf-8") as f:
                     for line_num, line in enumerate(f, 1):
                         if pattern_re.search(line):
-                            results.append(
-                                f"{file_path}:{line_num}: {line.strip()}"
-                            )
+                            results.append(f"{file_path}:{line_num}: {line.strip()}")
             except (OSError, UnicodeDecodeError):
                 pass
 

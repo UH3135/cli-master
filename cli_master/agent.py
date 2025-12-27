@@ -5,7 +5,12 @@ from operator import add
 
 from loguru import logger
 
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage
+from langchain_core.messages import (
+    BaseMessage,
+    HumanMessage,
+    ToolMessage,
+    SystemMessage,
+)
 from langchain.chat_models import init_chat_model
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.agent_toolkits import FileManagementToolkit
@@ -45,6 +50,7 @@ DEFAULT_SYSTEM_PROMPT = """당신은 CLI Master의 AI 어시스턴트입니다.
 # State 정의
 class AgentState(TypedDict):
     """LangGraph 에이전트 상태"""
+
     messages: Annotated[Sequence[BaseMessage], add]
 
 
@@ -67,8 +73,15 @@ def _get_graph():
         # 2. 도구 준비
         toolkit = FileManagementToolkit(
             root_dir=".",
-            selected_tools=["read_file", "write_file", "list_directory", "file_search",
-                          "copy_file", "move_file", "file_delete"]
+            selected_tools=[
+                "read_file",
+                "write_file",
+                "list_directory",
+                "file_search",
+                "copy_file",
+                "move_file",
+                "file_delete",
+            ],
         )
         toolkit_tools = toolkit.get_tools()
         custom_tools = get_tools()
@@ -87,7 +100,9 @@ def _get_graph():
 
             # 첫 턴일 경우 시스템 프롬프트 주입
             if len(messages) == 1 and isinstance(messages[0], HumanMessage):
-                messages = [SystemMessage(content=DEFAULT_SYSTEM_PROMPT)] + list(messages)
+                messages = [SystemMessage(content=DEFAULT_SYSTEM_PROMPT)] + list(
+                    messages
+                )
 
             response = model_with_tools.invoke(messages)
             return {"messages": [response]}
@@ -106,27 +121,33 @@ def _get_graph():
             for tool_call in tool_calls:
                 tool = _tools_by_name.get(tool_call["name"])
                 if not tool:
-                    tool_messages.append(ToolMessage(
-                        content=f"오류: 도구 '{tool_call['name']}'를 찾을 수 없습니다",
-                        tool_call_id=tool_call["id"],
-                        name=tool_call["name"]
-                    ))
+                    tool_messages.append(
+                        ToolMessage(
+                            content=f"오류: 도구 '{tool_call['name']}'를 찾을 수 없습니다",
+                            tool_call_id=tool_call["id"],
+                            name=tool_call["name"],
+                        )
+                    )
                     continue
 
                 try:
                     result = tool.invoke(tool_call["args"])
-                    tool_messages.append(ToolMessage(
-                        content=str(result),
-                        tool_call_id=tool_call["id"],
-                        name=tool_call["name"]
-                    ))
+                    tool_messages.append(
+                        ToolMessage(
+                            content=str(result),
+                            tool_call_id=tool_call["id"],
+                            name=tool_call["name"],
+                        )
+                    )
                 except Exception as e:
                     logger.error("Tool execution error: {}", str(e))
-                    tool_messages.append(ToolMessage(
-                        content=f"오류: {str(e)}",
-                        tool_call_id=tool_call["id"],
-                        name=tool_call["name"]
-                    ))
+                    tool_messages.append(
+                        ToolMessage(
+                            content=f"오류: {str(e)}",
+                            tool_call_id=tool_call["id"],
+                            name=tool_call["name"],
+                        )
+                    )
 
             return {"messages": tool_messages}
 
@@ -143,12 +164,7 @@ def _get_graph():
         workflow.add_node("tools", execute_tools)
         workflow.set_entry_point("agent")
         workflow.add_conditional_edges(
-            "agent",
-            should_continue,
-            {
-                "tools": "tools",
-                END: END
-            }
+            "agent", should_continue, {"tools": "tools", END: END}
         )
         workflow.add_edge("tools", "agent")
 
@@ -162,9 +178,7 @@ def chat(message: str) -> str:
     """메시지를 보내고 응답을 받음"""
     graph = _get_graph()
 
-    result = graph.invoke({
-        "messages": [HumanMessage(content=message)]
-    })
+    result = graph.invoke({"messages": [HumanMessage(content=message)]})
 
     return result["messages"][-1].content
 
@@ -182,9 +196,7 @@ def stream(message: str):
 
     graph = _get_graph()
 
-    initial_state = {
-        "messages": [HumanMessage(content=message)]
-    }
+    initial_state = {"messages": [HumanMessage(content=message)]}
 
     response_chunks = []
     current_tool_calls = {}
@@ -203,19 +215,13 @@ def stream(message: str):
                 run_id = event.get("run_id", "")
                 current_tool_calls[run_id] = tool_name
 
-                yield ("tool_start", {
-                    "name": tool_name,
-                    "args": args_str
-                })
+                yield ("tool_start", {"name": tool_name, "args": args_str})
 
             elif kind == "on_tool_end":
                 tool_name = event.get("name", "unknown")
                 tool_output = event.get("data", {}).get("output", "")
 
-                yield ("tool_end", {
-                    "name": tool_name,
-                    "result": str(tool_output)
-                })
+                yield ("tool_end", {"name": tool_name, "result": str(tool_output)})
 
             elif kind == "on_chat_model_stream":
                 chunk = event.get("data", {}).get("chunk")
@@ -227,8 +233,8 @@ def stream(message: str):
                     if isinstance(content, list):
                         # [{'type': 'text', 'text': '...'}, ...] 형태에서 텍스트 추출
                         for item in content:
-                            if isinstance(item, dict) and item.get('type') == 'text':
-                                response_chunks.append(item.get('text', ''))
+                            if isinstance(item, dict) and item.get("type") == "text":
+                                response_chunks.append(item.get("text", ""))
                     elif isinstance(content, str):
                         response_chunks.append(content)
 

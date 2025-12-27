@@ -37,7 +37,9 @@ def main():
     handler = CommandHandler(console, history)
     completer = SlashCompleter()
 
-    console.print("[dim]Ctrl+C: 현재 입력 취소 | Enter: 제출 | Alt+Enter: 줄바꿈 | /: 명령어 보기[/dim]\n")
+    console.print(
+        "[dim]Ctrl+C: 현재 입력 취소 | Enter: 제출 | Alt+Enter: 줄바꿈 | /: 명령어 보기[/dim]\n"
+    )
 
     # 키 바인딩 설정: Enter=제출, Alt+Enter=줄바꿈
     bindings = KeyBindings()

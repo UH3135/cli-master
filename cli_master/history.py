@@ -1,4 +1,5 @@
 """SQLAlchemy 기반 프롬프트 히스토리 저장소"""
+
 import uuid
 from datetime import datetime
 from typing import Iterable
@@ -13,12 +14,13 @@ Base = declarative_base()
 
 class HistoryEntry(Base):
     """히스토리 항목 모델"""
+
     __tablename__ = "history"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(String, nullable=False, index=True)
     content = Column(String, nullable=False)
-    role = Column(String, nullable=False, default='user')
+    role = Column(String, nullable=False, default="user")
     created_at = Column(DateTime, default=datetime.now)
 
     def __repr__(self) -> str:
@@ -40,7 +42,11 @@ class SqlHistory(History):
         history = SqlHistory("sqlite:///history.db", session_id="existing-id")
     """
 
-    def __init__(self, connection_string: str = "sqlite:///history.db", session_id: str | None = None):
+    def __init__(
+        self,
+        connection_string: str = "sqlite:///history.db",
+        session_id: str | None = None,
+    ):
         super().__init__()
         self.engine = create_engine(connection_string)
         Base.metadata.create_all(self.engine)
@@ -59,8 +65,12 @@ class SqlHistory(History):
             result = session.execute(text("PRAGMA table_info(history)")).fetchall()
             columns = [row[1] for row in result]
 
-            if 'role' not in columns:
-                session.execute(text("ALTER TABLE history ADD COLUMN role VARCHAR DEFAULT 'user' NOT NULL"))
+            if "role" not in columns:
+                session.execute(
+                    text(
+                        "ALTER TABLE history ADD COLUMN role VARCHAR DEFAULT 'user' NOT NULL"
+                    )
+                )
                 session.commit()
                 logger.info("role 컬럼이 history 테이블에 추가되었습니다")
 
@@ -72,10 +82,15 @@ class SqlHistory(History):
         사용자 입력(role='user')만 반환
         """
         with self._get_session() as session:
-            entries = session.query(HistoryEntry).filter(
-                HistoryEntry.session_id == self.session_id,
-                HistoryEntry.role == 'user'
-            ).order_by(desc(HistoryEntry.id)).all()
+            entries = (
+                session.query(HistoryEntry)
+                .filter(
+                    HistoryEntry.session_id == self.session_id,
+                    HistoryEntry.role == "user",
+                )
+                .order_by(desc(HistoryEntry.id))
+                .all()
+            )
             return [entry.content for entry in entries]
 
     def store_string(self, string: str) -> None:
@@ -86,9 +101,7 @@ class SqlHistory(History):
         """
         with self._get_session() as session:
             entry = HistoryEntry(
-                session_id=self.session_id,
-                content=string,
-                role='user'
+                session_id=self.session_id, content=string, role="user"
             )
             session.add(entry)
             session.commit()
@@ -104,21 +117,34 @@ class SqlHistory(History):
     def get_all(self) -> list[str]:
         """현재 세션의 히스토리 조회 (시간순)"""
         with self._get_session() as session:
-            entries = session.query(HistoryEntry).filter(
-                HistoryEntry.session_id == self.session_id
-            ).order_by(HistoryEntry.id).all()
+            entries = (
+                session.query(HistoryEntry)
+                .filter(HistoryEntry.session_id == self.session_id)
+                .order_by(HistoryEntry.id)
+                .all()
+            )
             return [entry.content for entry in entries]
 
     def search(self, keyword: str) -> list[HistoryEntry]:
         """현재 세션에서 키워드로 히스토리 검색"""
         with self._get_session() as session:
-            entries = session.query(HistoryEntry).filter(
-                HistoryEntry.session_id == self.session_id,
-                HistoryEntry.content.contains(keyword)
-            ).order_by(desc(HistoryEntry.created_at)).all()
+            entries = (
+                session.query(HistoryEntry)
+                .filter(
+                    HistoryEntry.session_id == self.session_id,
+                    HistoryEntry.content.contains(keyword),
+                )
+                .order_by(desc(HistoryEntry.created_at))
+                .all()
+            )
             # 세션 종료 전에 데이터 복사
             return [
-                HistoryEntry(id=e.id, session_id=e.session_id, content=e.content, created_at=e.created_at)
+                HistoryEntry(
+                    id=e.id,
+                    session_id=e.session_id,
+                    content=e.content,
+                    created_at=e.created_at,
+                )
                 for e in entries
             ]
 
@@ -126,9 +152,7 @@ class SqlHistory(History):
         """AI 응답 저장"""
         with self._get_session() as session:
             entry = HistoryEntry(
-                session_id=self.session_id,
-                content=response,
-                role='ai'
+                session_id=self.session_id, content=response, role="ai"
             )
             session.add(entry)
             session.commit()
@@ -140,7 +164,10 @@ class SqlHistory(History):
             list[tuple[str, str]]: [(role, content), ...]
         """
         with self._get_session() as session:
-            entries = session.query(HistoryEntry).filter(
-                HistoryEntry.session_id == self.session_id
-            ).order_by(HistoryEntry.id).all()
+            entries = (
+                session.query(HistoryEntry)
+                .filter(HistoryEntry.session_id == self.session_id)
+                .order_by(HistoryEntry.id)
+                .all()
+            )
             return [(entry.role, entry.content) for entry in entries]

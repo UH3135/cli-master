@@ -1,4 +1,5 @@
 """설정 관리 모듈"""
+
 import os
 from dotenv import load_dotenv
 

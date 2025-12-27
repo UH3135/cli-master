@@ -74,3 +74,9 @@ def stream(message: str):
 - 로그 포맷팅은 `%s` 사용 (f-string 금지)
 - 패키지 관리는 uv 사용
 - 모든 docstring은 한국어로 작성
+
+## Code Quality & Testing
+- **Lint**: `uv run ruff check .` / `uv run ruff format .`
+- **Type checking**: `uv run mypy cli_master`
+- **Run tests**: `uv run pytest tests/`
+- **Pre-commit hooks**: `uv run pre-commit run --all-files`
