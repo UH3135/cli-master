@@ -6,10 +6,14 @@ from typing import Iterable
 
 from loguru import logger
 from prompt_toolkit.history import History
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, desc, text
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
+from sqlalchemy import String, create_engine, desc, text
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    """SQLAlchemy 2.0 베이스 클래스"""
+
+    pass
 
 
 class HistoryEntry(Base):
@@ -17,11 +21,11 @@ class HistoryEntry(Base):
 
     __tablename__ = "history"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    session_id = Column(String, nullable=False, index=True)
-    content = Column(String, nullable=False)
-    role = Column(String, nullable=False, default="user")
-    created_at = Column(DateTime, default=datetime.now)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String, index=True)
+    content: Mapped[str] = mapped_column(String)
+    role: Mapped[str] = mapped_column(String, default="user")
+    created_at: Mapped[datetime] = mapped_column(default=datetime.now)
 
     def __repr__(self) -> str:
         return f"<HistoryEntry(id={self.id}, session_id='{self.session_id}', content='{self.content[:20]}...')>"
