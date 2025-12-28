@@ -14,6 +14,7 @@ from langchain_core.messages import (
 from langchain.chat_models import init_chat_model
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.agent_toolkits import FileManagementToolkit
+from langgraph.checkpoint.memory import MemorySaver
 from .tools import get_tools
 from langgraph.graph import StateGraph, END
 
@@ -57,11 +58,12 @@ class AgentState(TypedDict):
 # 싱글톤 graph 인스턴스
 _graph = None
 _tools_by_name = {}
+_checkpointer = None
 
 
 def _get_graph():
     """싱글톤 graph 인스턴스 반환 (지연 초기화)"""
-    global _graph, _tools_by_name
+    global _graph, _tools_by_name, _checkpointer
 
     if _graph is None:
         # 1. 모델 생성
@@ -168,23 +170,36 @@ def _get_graph():
         )
         workflow.add_edge("tools", "agent")
 
-        _graph = workflow.compile()
-        logger.info("LangGraph agent initialized successfully")
+        # Checkpointer 생성 (메모리 관리)
+        _checkpointer = MemorySaver()
+
+        _graph = workflow.compile(checkpointer=_checkpointer)
+        logger.info("LangGraph agent initialized with memory")
 
     return _graph
 
 
-def chat(message: str) -> str:
-    """메시지를 보내고 응답을 받음"""
+def chat(message: str, session_id: str = "default") -> str:
+    """메시지를 보내고 응답을 받음 (메모리 지원)
+
+    Args:
+        message: 사용자 메시지
+        session_id: 세션 ID (동일 ID면 대화 컨텍스트 유지)
+    """
     graph = _get_graph()
 
-    result = graph.invoke({"messages": [HumanMessage(content=message)]})
+    config = {"configurable": {"thread_id": session_id}}
+    result = graph.invoke({"messages": [HumanMessage(content=message)]}, config)
 
     return result["messages"][-1].content
 
 
-def stream(message: str):
-    """스트리밍 응답 생성
+def stream(message: str, session_id: str = "default"):
+    """스트리밍 응답 생성 (메모리 지원)
+
+    Args:
+        message: 사용자 메시지
+        session_id: 세션 ID (동일 ID면 대화 컨텍스트 유지)
 
     Yields:
         tuple: (event_type, data)
@@ -196,6 +211,7 @@ def stream(message: str):
 
     graph = _get_graph()
 
+    config = {"configurable": {"thread_id": session_id}}
     initial_state = {"messages": [HumanMessage(content=message)]}
 
     response_chunks = []
@@ -203,7 +219,7 @@ def stream(message: str):
 
     async def _async_stream():
         """내부 비동기 스트리밍"""
-        async for event in graph.astream_events(initial_state, version="v2"):
+        async for event in graph.astream_events(initial_state, config=config, version="v2"):
             kind = event["event"]
 
             if kind == "on_tool_start":

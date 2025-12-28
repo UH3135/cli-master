@@ -17,6 +17,8 @@ dependencies = [
     "rich>=14.2.0",
     "sqlalchemy>=2.0.45",
     "loguru>=0.7.0",
+    "langgraph-checkpoint-sqlite>=3.0.1",
+    "aiosqlite>=0.22.1",
 ]
 
 [project.scripts]
