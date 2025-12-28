@@ -30,19 +30,19 @@ DATABASE_URL=sqlite:///history.db
 ## 실행
 
 ```bash
-uv run python main.py
+uv run cli-master
 ```
 
 ## 프로젝트 구조
 
 ```
-main.py          # 진입점
-src/
-  agent.py       # AI 에이전트 (Deep Agents + Gemini)
+cli_master/
+  main.py        # 진입점
+  agent.py       # AI 에이전트 (LangGraph + Gemini)
   commands.py    # 명령어 처리
   config.py      # 환경 설정
   history.py     # 히스토리 관리
   models.py      # 데이터 모델
   completer.py   # 자동완성
-  storage/       # 저장소 구현
+  tools.py       # 커스텀 도구
 ```
