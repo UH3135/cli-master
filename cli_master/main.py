@@ -75,7 +75,7 @@ def main():
                     return s[:max_len] + "..." if len(s) > max_len else s
 
                 with Live(Text("답변 생성 중...", style="dim"), transient=True) as live:
-                    for event_type, data in agent.stream(user_input):
+                    for event_type, data in agent.stream(user_input, session_id=history.session_id):
                         if event_type == "tool_start":
                             args_str = truncate(data["args"])
                             logs.append(f"⚙ {data['name']} 실행 중...\n  → {args_str}")
