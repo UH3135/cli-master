@@ -2,6 +2,7 @@
 
 from typing import TypedDict, Annotated, Sequence
 from operator import add
+import sqlite3
 
 from loguru import logger
 
@@ -14,7 +15,9 @@ from langchain_core.messages import (
 from langchain.chat_models import init_chat_model
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.agent_toolkits import FileManagementToolkit
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.sqlite import SqliteSaver
+import aiosqlite
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from .tools import get_tools
 from langgraph.graph import StateGraph, END
 
@@ -57,123 +60,125 @@ class AgentState(TypedDict):
 
 # 싱글톤 graph 인스턴스
 _graph = None
-_tools_by_name = {}
 _checkpointer = None
+_checkpointer_connection = None
+
+
+def _build_graph(checkpointer):
+    """checkpointer를 받아 graph를 생성"""
+    # 1. 모델 생성
+    model = create_chat_model(
+        model_name=config.MODEL_NAME,
+        temperature=config.MODEL_TEMPERATURE,
+    )
+
+    # 2. 도구 준비
+    toolkit = FileManagementToolkit(
+        root_dir=".",
+        selected_tools=[
+            "read_file",
+            "write_file",
+            "list_directory",
+            "file_search",
+            "copy_file",
+            "move_file",
+            "file_delete",
+        ],
+    )
+    toolkit_tools = toolkit.get_tools()
+    custom_tools = get_tools()
+    all_tools = toolkit_tools + custom_tools
+
+    tools_by_name = {tool.name: tool for tool in all_tools}
+    logger.info("Loaded {} tools: {}", len(all_tools), list(tools_by_name.keys()))
+
+    # 3. 모델에 도구 바인딩
+    model_with_tools = model.bind_tools(all_tools)
+
+    # 4. 노드 정의
+    def call_model(state: AgentState):
+        """에이전트 노드: 도구와 함께 모델 호출"""
+        messages = state["messages"]
+
+        # 첫 턴일 경우 시스템 프롬프트 주입
+        if len(messages) == 1 and isinstance(messages[0], HumanMessage):
+            messages = [SystemMessage(content=DEFAULT_SYSTEM_PROMPT)] + list(messages)
+
+        response = model_with_tools.invoke(messages)
+        return {"messages": [response]}
+
+    def execute_tools(state: AgentState):
+        """도구 노드: 요청된 도구 실행"""
+        messages = state["messages"]
+        last_message = messages[-1]
+
+        if not hasattr(last_message, "tool_calls"):
+            return {"messages": []}
+
+        tool_calls = last_message.tool_calls
+
+        tool_messages = []
+        for tool_call in tool_calls:
+            tool = tools_by_name.get(tool_call["name"])
+            if not tool:
+                tool_messages.append(
+                    ToolMessage(
+                        content=f"오류: 도구 '{tool_call['name']}'를 찾을 수 없습니다",
+                        tool_call_id=tool_call["id"],
+                        name=tool_call["name"],
+                    )
+                )
+                continue
+
+            try:
+                result = tool.invoke(tool_call["args"])
+                tool_messages.append(
+                    ToolMessage(
+                        content=str(result),
+                        tool_call_id=tool_call["id"],
+                        name=tool_call["name"],
+                    )
+                )
+            except Exception as e:
+                logger.error("Tool execution error: {}", str(e))
+                tool_messages.append(
+                    ToolMessage(
+                        content=f"오류: {str(e)}",
+                        tool_call_id=tool_call["id"],
+                        name=tool_call["name"],
+                    )
+                )
+
+        return {"messages": tool_messages}
+
+    def should_continue(state: AgentState):
+        """라우팅 로직"""
+        last_message = state["messages"][-1]
+        if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+            return "tools"
+        return END
+
+    # 5. 그래프 구축
+    workflow = StateGraph(AgentState)
+    workflow.add_node("agent", call_model)
+    workflow.add_node("tools", execute_tools)
+    workflow.set_entry_point("agent")
+    workflow.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
+    workflow.add_edge("tools", "agent")
+
+    return workflow.compile(checkpointer=checkpointer)
 
 
 def _get_graph():
     """싱글톤 graph 인스턴스 반환 (지연 초기화)"""
-    global _graph, _tools_by_name, _checkpointer
+    global _graph, _checkpointer
 
     if _graph is None:
-        # 1. 모델 생성
-        model = create_chat_model(
-            model_name=config.MODEL_NAME,
-            temperature=config.MODEL_TEMPERATURE,
-        )
-
-        # 2. 도구 준비
-        toolkit = FileManagementToolkit(
-            root_dir=".",
-            selected_tools=[
-                "read_file",
-                "write_file",
-                "list_directory",
-                "file_search",
-                "copy_file",
-                "move_file",
-                "file_delete",
-            ],
-        )
-        toolkit_tools = toolkit.get_tools()
-        custom_tools = get_tools()
-        all_tools = toolkit_tools + custom_tools
-
-        _tools_by_name = {tool.name: tool for tool in all_tools}
-        logger.info("Loaded {} tools: {}", len(all_tools), list(_tools_by_name.keys()))
-
-        # 3. 모델에 도구 바인딩
-        model_with_tools = model.bind_tools(all_tools)
-
-        # 4. 노드 정의
-        def call_model(state: AgentState):
-            """에이전트 노드: 도구와 함께 모델 호출"""
-            messages = state["messages"]
-
-            # 첫 턴일 경우 시스템 프롬프트 주입
-            if len(messages) == 1 and isinstance(messages[0], HumanMessage):
-                messages = [SystemMessage(content=DEFAULT_SYSTEM_PROMPT)] + list(
-                    messages
-                )
-
-            response = model_with_tools.invoke(messages)
-            return {"messages": [response]}
-
-        def execute_tools(state: AgentState):
-            """도구 노드: 요청된 도구 실행"""
-            messages = state["messages"]
-            last_message = messages[-1]
-
-            if not hasattr(last_message, "tool_calls"):
-                return {"messages": []}
-
-            tool_calls = last_message.tool_calls
-
-            tool_messages = []
-            for tool_call in tool_calls:
-                tool = _tools_by_name.get(tool_call["name"])
-                if not tool:
-                    tool_messages.append(
-                        ToolMessage(
-                            content=f"오류: 도구 '{tool_call['name']}'를 찾을 수 없습니다",
-                            tool_call_id=tool_call["id"],
-                            name=tool_call["name"],
-                        )
-                    )
-                    continue
-
-                try:
-                    result = tool.invoke(tool_call["args"])
-                    tool_messages.append(
-                        ToolMessage(
-                            content=str(result),
-                            tool_call_id=tool_call["id"],
-                            name=tool_call["name"],
-                        )
-                    )
-                except Exception as e:
-                    logger.error("Tool execution error: {}", str(e))
-                    tool_messages.append(
-                        ToolMessage(
-                            content=f"오류: {str(e)}",
-                            tool_call_id=tool_call["id"],
-                            name=tool_call["name"],
-                        )
-                    )
-
-            return {"messages": tool_messages}
-
-        def should_continue(state: AgentState):
-            """라우팅 로직"""
-            last_message = state["messages"][-1]
-            if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-                return "tools"
-            return END
-
-        # 5. 그래프 구축
-        workflow = StateGraph(AgentState)
-        workflow.add_node("agent", call_model)
-        workflow.add_node("tools", execute_tools)
-        workflow.set_entry_point("agent")
-        workflow.add_conditional_edges(
-            "agent", should_continue, {"tools": "tools", END: END}
-        )
-        workflow.add_edge("tools", "agent")
-
-        # Checkpointer 생성 (메모리 관리)
-        _checkpointer = MemorySaver()
-
-        _graph = workflow.compile(checkpointer=_checkpointer)
+        global _checkpointer_connection
+        if _checkpointer_connection is None:
+            _checkpointer_connection = sqlite3.connect("checkpoints.db")
+        _checkpointer = SqliteSaver(conn=_checkpointer_connection)
+        _graph = _build_graph(_checkpointer)
         logger.info("LangGraph agent initialized with memory")
 
     return _graph
@@ -209,8 +214,6 @@ def stream(message: str, session_id: str = "default"):
     """
     import asyncio
 
-    graph = _get_graph()
-
     config = {"configurable": {"thread_id": session_id}}
     initial_state = {"messages": [HumanMessage(content=message)]}
 
@@ -219,40 +222,52 @@ def stream(message: str, session_id: str = "default"):
 
     async def _async_stream():
         """내부 비동기 스트리밍"""
-        async for event in graph.astream_events(initial_state, config=config, version="v2"):
-            kind = event["event"]
+        async with aiosqlite.connect("checkpoints.db") as conn:
+            # langgraph-checkpoint-sqlite가 기대하는 is_alive가 없으면 보완
+            if not hasattr(conn, "is_alive"):
+                conn.is_alive = lambda: conn._running
+            checkpointer = AsyncSqliteSaver(conn)
+            graph = _build_graph(checkpointer)
 
-            if kind == "on_tool_start":
-                tool_name = event.get("name", "unknown")
-                tool_input = event.get("data", {}).get("input", {})
-                args_str = str(tool_input) if tool_input else ""
+            async for event in graph.astream_events(
+                initial_state, config=config, version="v2"
+            ):
+                kind = event["event"]
 
-                # tool_end와 매칭하기 위해 저장
-                run_id = event.get("run_id", "")
-                current_tool_calls[run_id] = tool_name
+                if kind == "on_tool_start":
+                    tool_name = event.get("name", "unknown")
+                    tool_input = event.get("data", {}).get("input", {})
+                    args_str = str(tool_input) if tool_input else ""
 
-                yield ("tool_start", {"name": tool_name, "args": args_str})
+                    # tool_end와 매칭하기 위해 저장
+                    run_id = event.get("run_id", "")
+                    current_tool_calls[run_id] = tool_name
 
-            elif kind == "on_tool_end":
-                tool_name = event.get("name", "unknown")
-                tool_output = event.get("data", {}).get("output", "")
+                    yield ("tool_start", {"name": tool_name, "args": args_str})
 
-                yield ("tool_end", {"name": tool_name, "result": str(tool_output)})
+                elif kind == "on_tool_end":
+                    tool_name = event.get("name", "unknown")
+                    tool_output = event.get("data", {}).get("output", "")
 
-            elif kind == "on_chat_model_stream":
-                chunk = event.get("data", {}).get("chunk")
-                if chunk and hasattr(chunk, "content") and chunk.content:
-                    # content 추출
-                    content = chunk.content
+                    yield ("tool_end", {"name": tool_name, "result": str(tool_output)})
 
-                    # content가 리스트일 경우 (Gemini의 경우)
-                    if isinstance(content, list):
-                        # [{'type': 'text', 'text': '...'}, ...] 형태에서 텍스트 추출
-                        for item in content:
-                            if isinstance(item, dict) and item.get("type") == "text":
-                                response_chunks.append(item.get("text", ""))
-                    elif isinstance(content, str):
-                        response_chunks.append(content)
+                elif kind == "on_chat_model_stream":
+                    chunk = event.get("data", {}).get("chunk")
+                    if chunk and hasattr(chunk, "content") and chunk.content:
+                        # content 추출
+                        content = chunk.content
+
+                        # content가 리스트일 경우 (Gemini의 경우)
+                        if isinstance(content, list):
+                            # [{'type': 'text', 'text': '...'}, ...] 형태에서 텍스트 추출
+                            for item in content:
+                                if (
+                                    isinstance(item, dict)
+                                    and item.get("type") == "text"
+                                ):
+                                    response_chunks.append(item.get("text", ""))
+                        elif isinstance(content, str):
+                            response_chunks.append(content)
 
         # 최종 응답 반환
         if response_chunks:
