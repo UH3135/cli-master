@@ -175,3 +175,19 @@ class SqlHistory(History):
                 .all()
             )
             return [(entry.role, entry.content) for entry in entries]
+
+    def replace_history(self, entries: list[tuple[str, str]]) -> None:
+        """현재 세션 히스토리를 새 목록으로 교체"""
+        with self._get_session() as session:
+            session.query(HistoryEntry).filter(
+                HistoryEntry.session_id == self.session_id
+            ).delete()
+            for role, content in entries:
+                session.add(
+                    HistoryEntry(
+                        session_id=self.session_id,
+                        content=content,
+                        role=role,
+                    )
+                )
+            session.commit()
