@@ -6,10 +6,11 @@ from rich.text import Text
 from prompt_toolkit import PromptSession
 from prompt_toolkit.styles import Style
 from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.document import Document
 
 from .config import config
 from .history import SqlHistory
-from .commands import CommandHandler
+from .commands import CommandHandler, get_command_names
 from .completer import SlashCompleter
 from .log import setup_logging
 from . import agent
@@ -44,6 +45,26 @@ def main():
     # 키 바인딩 설정: Enter=제출, Alt+Enter=줄바꿈
     bindings = KeyBindings()
 
+    @bindings.add("enter")
+    def _(event):
+        """Enter: 단일 매칭이면 자동완성 후 제출"""
+        buffer = event.current_buffer
+        text = buffer.text
+        if text.startswith("/"):
+            parts = text[1:].split(maxsplit=1)
+            cmd_part = parts[0] if parts else ""
+            rest = parts[1] if len(parts) > 1 else ""
+
+            matches = [c for c in get_command_names() if c.startswith(cmd_part)]
+            if len(matches) == 1 and matches[0] != cmd_part:
+                new_text = "/" + matches[0]
+                if rest:
+                    new_text += " " + rest
+                buffer.document = Document(
+                    text=new_text, cursor_position=len(new_text)
+                )
+        buffer.validate_and_handle()
+
     @bindings.add("escape", "enter")
     def _(event):
         """Alt+Enter: 줄바꿈 삽입"""
@@ -66,6 +87,7 @@ def main():
 
             if user_input.startswith("/"):
                 handler.handle(user_input)
+                history.discard_last_command(user_input)
             elif user_input.strip():
                 logs = []
                 final_response = None
