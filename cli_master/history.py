@@ -191,3 +191,22 @@ class SqlHistory(History):
                     )
                 )
             session.commit()
+
+    def discard_last_command(self, command: str) -> None:
+        """직전 입력이 명령어면 히스토리에서 제거"""
+        if not command.startswith("/"):
+            return
+        with self._get_session() as session:
+            entry = (
+                session.query(HistoryEntry)
+                .filter(
+                    HistoryEntry.session_id == self.session_id,
+                    HistoryEntry.role == "user",
+                    HistoryEntry.content == command,
+                )
+                .order_by(desc(HistoryEntry.id))
+                .first()
+            )
+            if entry:
+                session.delete(entry)
+                session.commit()

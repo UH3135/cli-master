@@ -14,6 +14,11 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 _commands: dict[str, tuple[Callable, str]] = {}
 
 
+def get_command_names() -> list[str]:
+    """등록된 명령어 목록 반환"""
+    return sorted(_commands.keys())
+
+
 def command(name: str, description: str = ""):
     """명령어 등록 데코레이터"""
 
