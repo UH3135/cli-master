@@ -83,6 +83,50 @@ def test_clear_history(tmp_path):
     assert "히스토리가 비어있습니다" in output
 
 
+def test_history_output_format(tmp_path):
+    console = _make_console()
+    history = _make_history(tmp_path)
+    handler = CommandHandler(console, history)
+
+    history.store_string("첫번째")
+    history.store_ai_response("응답")
+    history.store_string("두번째")
+
+    handler.handle("/history")
+
+    output = _get_output(console)
+    assert "대화 히스토리" in output
+    assert "역할" in output
+    assert "내용" in output
+    assert "사용자" in output
+    assert "AI" in output
+    assert "첫번째" in output
+    assert "두번째" in output
+    assert "응답" in output
+
+
+def test_clear_then_resume_history(tmp_path):
+    console = _make_console()
+    history = _make_history(tmp_path)
+    handler = CommandHandler(console, history)
+
+    history.store_string("초기")
+    history.store_ai_response("초기 응답")
+    handler.handle("/clear")
+
+    history.store_string("재시작")
+    history.store_ai_response("재응답")
+    handler.handle("/history")
+
+    output = _get_output(console)
+    assert "재시작" in output
+    assert "재응답" in output
+    assert history.get_all_with_role() == [
+        ("user", "재시작"),
+        ("ai", "재응답"),
+    ]
+
+
 def test_unknown_command(tmp_path):
     console = _make_console()
     history = _make_history(tmp_path)
