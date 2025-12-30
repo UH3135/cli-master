@@ -5,10 +5,14 @@ import os
 import re
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
+from uuid import uuid4
 
 import pexpect
+import sqlite3
+from langgraph.checkpoint.sqlite import SqliteSaver
 
 PROMPT = "> "
 ERROR_STRINGS = [
@@ -54,7 +58,7 @@ class SessionLog:
     path: Path
 
     def close(self) -> None:
-        self.tee.close()
+        self.file.close()
 
     def text(self) -> str:
         return self.buffer.getvalue()
@@ -150,3 +154,18 @@ def assert_log_contains(log_text: str, *needles: str) -> None:
     normalized = normalize_log(log_text)
     for needle in needles:
         assert needle in normalized
+
+
+def seed_checkpoint_db(checkpoint_db_path: Path, thread_id: str, messages) -> None:
+    # 테스트용 체크포인트를 만들어 /load 검증에 사용한다.
+    checkpoint = {
+        "id": str(uuid4()),
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "channel_values": {"messages": messages},
+    }
+    metadata = {"source": "test", "step": 0, "writes": {}}
+    config = {"configurable": {"thread_id": thread_id, "checkpoint_ns": ""}}
+
+    with sqlite3.connect(str(checkpoint_db_path)) as conn:
+        saver = SqliteSaver(conn=conn)
+        saver.put(config, checkpoint, metadata, {})
