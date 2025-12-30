@@ -176,7 +176,9 @@ def _get_graph():
     if _graph is None:
         global _checkpointer_connection
         if _checkpointer_connection is None:
-            _checkpointer_connection = sqlite3.connect("checkpoints.db")
+            _checkpointer_connection = sqlite3.connect(
+                str(config.CHECKPOINT_DB_PATH)
+            )
         _checkpointer = SqliteSaver(conn=_checkpointer_connection)
         _graph = _build_graph(_checkpointer)
         logger.info("LangGraph agent initialized with memory")
@@ -193,8 +195,8 @@ def chat(message: str, session_id: str = "default") -> str:
     """
     graph = _get_graph()
 
-    config = {"configurable": {"thread_id": session_id}}
-    result = graph.invoke({"messages": [HumanMessage(content=message)]}, config)
+    runtime_config = {"configurable": {"thread_id": session_id}}
+    result = graph.invoke({"messages": [HumanMessage(content=message)]}, runtime_config)
 
     return result["messages"][-1].content
 
@@ -214,7 +216,7 @@ def stream(message: str, session_id: str = "default"):
     """
     import asyncio
 
-    config = {"configurable": {"thread_id": session_id}}
+    runtime_config = {"configurable": {"thread_id": session_id}}
     initial_state = {"messages": [HumanMessage(content=message)]}
 
     response_chunks = []
@@ -222,7 +224,7 @@ def stream(message: str, session_id: str = "default"):
 
     async def _async_stream():
         """내부 비동기 스트리밍"""
-        async with aiosqlite.connect("checkpoints.db") as conn:
+        async with aiosqlite.connect(str(config.CHECKPOINT_DB_PATH)) as conn:
             # langgraph-checkpoint-sqlite가 기대하는 is_alive가 없으면 보완
             if not hasattr(conn, "is_alive"):
                 conn.is_alive = lambda: conn._running
@@ -230,7 +232,7 @@ def stream(message: str, session_id: str = "default"):
             graph = _build_graph(checkpointer)
 
             async for event in graph.astream_events(
-                initial_state, config=config, version="v2"
+                initial_state, config=runtime_config, version="v2"
             ):
                 kind = event["event"]
 
@@ -277,14 +279,37 @@ def stream(message: str, session_id: str = "default"):
     # 비동기 제너레이터를 동기로 변환
     async_gen = _async_stream()
 
+    created_new_loop = False
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        created_new_loop = True
 
-    while True:
+    try:
+        while True:
+            try:
+                yield loop.run_until_complete(async_gen.__anext__())
+            except StopAsyncIteration:
+                break
+    finally:
+        # 비동기 리소스 정리를 보장
         try:
-            yield loop.run_until_complete(async_gen.__anext__())
-        except StopAsyncIteration:
-            break
+            loop.run_until_complete(async_gen.aclose())
+        except Exception:
+            pass
+
+        if created_new_loop:
+            try:
+                pending = asyncio.all_tasks(loop)
+                for task in pending:
+                    task.cancel()
+                loop.run_until_complete(
+                    asyncio.gather(*pending, return_exceptions=True)
+                )
+                loop.run_until_complete(loop.shutdown_asyncgens())
+            except Exception:
+                pass
+            finally:
+                loop.close()

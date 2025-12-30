@@ -16,8 +16,8 @@ uv sync
 # Google AI API 키 (Gemini 2.5 Flash 사용)
 GOOGLE_API_KEY=your_google_api_key_here
 
-# 데이터베이스 연결 문자열 (선택, 기본값: sqlite:///history.db)
-DATABASE_URL=sqlite:///history.db
+# 데이터베이스 연결 문자열 (선택, 기본값: sqlite:///db/history.db)
+DATABASE_URL=sqlite:///db/history.db
 ```
 
 ### Google API 키 발급 방법

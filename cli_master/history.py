@@ -40,15 +40,15 @@ class SqlHistory(History):
 
     사용법:
         # 새 세션 (자동 UUID 생성)
-        history = SqlHistory("sqlite:///history.db")
+        history = SqlHistory("sqlite:///db/history.db")
 
         # 기존 세션 이어서 사용
-        history = SqlHistory("sqlite:///history.db", session_id="existing-id")
+        history = SqlHistory("sqlite:///db/history.db", session_id="existing-id")
     """
 
     def __init__(
         self,
-        connection_string: str = "sqlite:///history.db",
+        connection_string: str = "sqlite:///db/history.db",
         session_id: str | None = None,
     ):
         super().__init__()

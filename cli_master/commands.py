@@ -7,6 +7,7 @@ from rich.console import Console
 from rich.table import Table
 
 from .history import SqlHistory
+from .config import config
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.sqlite import SqliteSaver
 
@@ -112,7 +113,7 @@ class CommandHandler:
     def _show_threads(self, _: str = "") -> None:
         """체크포인트 DB의 thread 목록 출력"""
         try:
-            with sqlite3.connect("checkpoints.db") as conn:
+            with sqlite3.connect(str(config.CHECKPOINT_DB_PATH)) as conn:
                 rows = conn.execute(
                     "SELECT thread_id, COUNT(*) AS cnt, MAX(checkpoint_id) AS latest "
                     "FROM checkpoints GROUP BY thread_id ORDER BY latest DESC"
@@ -142,10 +143,10 @@ class CommandHandler:
             return
 
         try:
-            with sqlite3.connect("checkpoints.db") as conn:
+            with sqlite3.connect(str(config.CHECKPOINT_DB_PATH)) as conn:
                 saver = SqliteSaver(conn=conn)
-                config = {"configurable": {"thread_id": thread_id}}
-                tup = saver.get_tuple(config)
+                runtime_config = {"configurable": {"thread_id": thread_id}}
+                tup = saver.get_tuple(runtime_config)
         except sqlite3.Error as e:
             self.console.print(f"[red]체크포인트 DB 조회 실패: {e}[/red]")
             return
