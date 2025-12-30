@@ -40,6 +40,8 @@ class Config:
         # AI 모델 설정
         self.MODEL_NAME = os.getenv("MODEL_NAME", "gemini-2.5-flash")
         self.MODEL_TEMPERATURE = float(os.getenv("MODEL_TEMPERATURE", "0.7"))
+        # 테스트용 가짜 LLM 모드
+        self.FAKE_LLM = os.getenv("CLI_MASTER_FAKE_LLM", "0") == "1"
 
 
 config = Config()

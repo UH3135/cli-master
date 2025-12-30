@@ -77,7 +77,11 @@ class CommandHandler:
     @command("history", "현재 세션 히스토리 표시")
     def _show_history(self, _: str = "") -> None:
         """히스토리 출력 (user와 ai 구분)"""
-        items = self.history.get_all_with_role()
+        items = [
+            (role, content)
+            for role, content in self.history.get_all_with_role()
+            if not (role == "user" and content.startswith("/"))
+        ]
         if not items:
             self.console.print("[yellow]히스토리가 비어있습니다[/yellow]")
             return
@@ -119,6 +123,9 @@ class CommandHandler:
                     "FROM checkpoints GROUP BY thread_id ORDER BY latest DESC"
                 ).fetchall()
         except sqlite3.Error as e:
+            if "no such table: checkpoints" in str(e):
+                self.console.print("[yellow]저장된 thread가 없습니다[/yellow]")
+                return
             self.console.print(f"[red]체크포인트 DB 조회 실패: {e}[/red]")
             return
 
