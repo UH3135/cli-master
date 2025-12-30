@@ -86,8 +86,8 @@ def main():
             user_input = session.prompt()
 
             if user_input.startswith("/"):
-                handler.handle(user_input)
                 history.discard_last_command(user_input)
+                handler.handle(user_input)
             elif user_input.strip():
                 logs = []
                 final_response = None

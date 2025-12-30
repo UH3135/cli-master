@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,6 +36,14 @@ class TeeIO(io.TextIOBase):
     def close(self) -> None:  # type: ignore[override]
         for stream in self._streams:
             stream.close()
+
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def normalize_log(text: str) -> str:
+    cleaned = _ANSI_RE.sub("", text)
+    return cleaned.replace("\r", "\n")
 
 
 @dataclass
@@ -108,7 +117,7 @@ def spawn_cli(
 
 
 def expect_prompt(child: pexpect.spawn, timeout: float = 10) -> None:
-    child.expect_exact(PROMPT, timeout=timeout)
+    child.expect(r"(?:\x1b\[[0-9;]*[A-Za-z])*>\s", timeout=timeout)
 
 
 def expect_patterns(
@@ -132,5 +141,12 @@ def assert_no_error_strings(log_text: str, extra_errors: Iterable[str] | None = 
     errors = list(ERROR_STRINGS)
     if extra_errors:
         errors.extend(extra_errors)
+    normalized = normalize_log(log_text)
     for err in errors:
-        assert err not in log_text
+        assert err not in normalized
+
+
+def assert_log_contains(log_text: str, *needles: str) -> None:
+    normalized = normalize_log(log_text)
+    for needle in needles:
+        assert needle in normalized

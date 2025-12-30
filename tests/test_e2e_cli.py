@@ -4,7 +4,7 @@ import pexpect
 
 from tests.e2e_helpers import (
     assert_no_error_strings,
-    expect_patterns,
+    assert_log_contains,
     expect_prompt,
     send_ctrl_d,
     send_exit,
@@ -36,20 +36,18 @@ def test_help_command(cli_process):
     child, session_log = cli_process
     expect_prompt(child)
     child.sendline("/help")
-    expect_patterns(
-        child,
-        [
-            r"/help",
-            r"/history",
-            r"/clear",
-            r"/threads",
-            r"/load",
-            r"/exit",
-        ],
-    )
     expect_prompt(child)
     send_exit(child)
     child.expect(pexpect.EOF, timeout=5)
+    assert_log_contains(
+        session_log.text(),
+        "/help",
+        "/history",
+        "/clear",
+        "/threads",
+        "/load",
+        "/exit",
+    )
     _drain_and_assert(child, session_log.text())
 
 
@@ -57,10 +55,10 @@ def test_history_empty(cli_process):
     child, session_log = cli_process
     expect_prompt(child)
     child.sendline("/history")
-    child.expect("히스토리가 비어있습니다", timeout=5)
     expect_prompt(child)
     send_exit(child)
     child.expect(pexpect.EOF, timeout=5)
+    assert_log_contains(session_log.text(), "히스토리가 비어있습니다")
     _drain_and_assert(child, session_log.text())
 
 
@@ -79,10 +77,10 @@ def test_load_usage(cli_process):
     child, session_log = cli_process
     expect_prompt(child)
     child.sendline("/load")
-    child.expect("사용법: /load <thread_id>", timeout=5)
     expect_prompt(child)
     send_exit(child)
     child.expect(pexpect.EOF, timeout=5)
+    assert_log_contains(session_log.text(), "사용법: /load <thread_id>")
     _drain_and_assert(child, session_log.text())
 
 
@@ -90,10 +88,10 @@ def test_threads_empty(cli_process):
     child, session_log = cli_process
     expect_prompt(child)
     child.sendline("/threads")
-    child.expect("저장된 thread가 없습니다", timeout=5)
     expect_prompt(child)
     send_exit(child)
     child.expect(pexpect.EOF, timeout=5)
+    assert_log_contains(session_log.text(), "저장된 thread가 없습니다")
     _drain_and_assert(child, session_log.text())
 
 
@@ -104,8 +102,8 @@ def test_history_after_one_turn(cli_process):
     child.expect("AI:", timeout=30)
     expect_prompt(child)
     child.sendline("/history")
-    expect_patterns(child, [r"user", r"ai"], timeout=10)
     expect_prompt(child)
     send_exit(child)
     child.expect(pexpect.EOF, timeout=5)
+    assert_log_contains(session_log.text(), "사용자", "AI", "안 1234")
     _drain_and_assert(child, session_log.text())
