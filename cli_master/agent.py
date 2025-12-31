@@ -163,7 +163,9 @@ def _build_graph(checkpointer):
     workflow.add_node("agent", call_model)
     workflow.add_node("tools", execute_tools)
     workflow.set_entry_point("agent")
-    workflow.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
+    workflow.add_conditional_edges(
+        "agent", should_continue, {"tools": "tools", END: END}
+    )
     workflow.add_edge("tools", "agent")
 
     return workflow.compile(checkpointer=checkpointer)
@@ -176,9 +178,7 @@ def _get_graph():
     if _graph is None:
         global _checkpointer_connection
         if _checkpointer_connection is None:
-            _checkpointer_connection = sqlite3.connect(
-                str(config.CHECKPOINT_DB_PATH)
-            )
+            _checkpointer_connection = sqlite3.connect(str(config.CHECKPOINT_DB_PATH))
         _checkpointer = SqliteSaver(conn=_checkpointer_connection)
         _graph = _build_graph(_checkpointer)
         logger.info("LangGraph agent initialized with memory")

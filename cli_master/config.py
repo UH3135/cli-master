@@ -19,9 +19,7 @@ class Config:
 
     def __init__(self) -> None:
         self.PROJECT_ROOT = Path(__file__).resolve().parent.parent
-        self.DB_DIR = Path(
-            os.getenv("DATABASE_DIR", str(self.PROJECT_ROOT / "db"))
-        )
+        self.DB_DIR = Path(os.getenv("DATABASE_DIR", str(self.PROJECT_ROOT / "db")))
         self.HISTORY_DB_PATH = Path(
             os.getenv("HISTORY_DB_PATH", str(self.DB_DIR / "history.db"))
         )
