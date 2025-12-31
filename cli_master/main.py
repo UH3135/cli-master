@@ -7,9 +7,8 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.styles import Style
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.document import Document
+from prompt_toolkit.history import InMemoryHistory
 
-from .config import config
-from .history import SqlHistory
 from .commands import CommandHandler, get_command_names
 from .completer import SlashCompleter
 from .log import setup_logging
@@ -34,7 +33,7 @@ def main():
     console.print("[bold cyan]CLI Master[/bold cyan]")
 
     # 히스토리 및 자동완성 초기화
-    history = SqlHistory(config.DATABASE_URL)
+    history = InMemoryHistory()
     handler = CommandHandler(console, history)
     completer = SlashCompleter()
 
@@ -60,9 +59,7 @@ def main():
                 new_text = "/" + matches[0]
                 if rest:
                     new_text += " " + rest
-                buffer.document = Document(
-                    text=new_text, cursor_position=len(new_text)
-                )
+                buffer.document = Document(text=new_text, cursor_position=len(new_text))
         buffer.validate_and_handle()
 
     @bindings.add("escape", "enter")
@@ -87,7 +84,6 @@ def main():
 
             if user_input.startswith("/"):
                 handler.handle(user_input)
-                history.discard_last_command(user_input)
             elif user_input.strip():
                 logs = []
                 final_response = None
@@ -97,7 +93,9 @@ def main():
                     return s[:max_len] + "..." if len(s) > max_len else s
 
                 with Live(Text("답변 생성 중...", style="dim"), transient=True) as live:
-                    for event_type, data in agent.stream(user_input, session_id=history.session_id):
+                    for event_type, data in agent.stream(
+                        user_input, session_id=handler.current_thread_id
+                    ):
                         if event_type == "tool_start":
                             args_str = truncate(data["args"])
                             logs.append(f"⚙ {data['name']} 실행 중...\n  → {args_str}")
@@ -111,7 +109,6 @@ def main():
 
                 if final_response:
                     console.print(f"[bold cyan]AI:[/bold cyan] {final_response}")
-                    history.store_ai_response(final_response)
 
         except KeyboardInterrupt:
             # Ctrl+C: 현재 입력 무시하고 계속
