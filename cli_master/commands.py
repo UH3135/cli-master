@@ -155,8 +155,8 @@ class CommandHandler:
         self._current_thread_id = str(uuid.uuid4())
 
         # InMemoryHistory 초기화
-        if hasattr(self.history, "_loaded_strings"):
-            self.history._loaded_strings.clear()
+        if hasattr(self.history, "_storage"):
+            self.history._storage.clear()
 
         self.console.print(
             f"[green]새 대화를 시작합니다 (thread: {self._current_thread_id[:8]}...)[/green]"
@@ -266,8 +266,8 @@ class CommandHandler:
                     user_messages.append(text)
 
         # InMemoryHistory 갱신
-        if hasattr(self.history, "_loaded_strings"):
-            self.history._loaded_strings.clear()
+        if hasattr(self.history, "_storage"):
+            self.history._storage.clear()
         for msg in user_messages:
             self.history.store_string(msg)
 
