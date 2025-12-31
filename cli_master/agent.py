@@ -193,6 +193,9 @@ def chat(message: str, session_id: str = "default") -> str:
         message: 사용자 메시지
         session_id: 세션 ID (동일 ID면 대화 컨텍스트 유지)
     """
+    if config.FAKE_LLM:
+        # 테스트에서 외부 호출 없이 즉시 응답
+        return f"fake: {message}"
     graph = _get_graph()
 
     runtime_config = {"configurable": {"thread_id": session_id}}
@@ -215,6 +218,11 @@ def stream(message: str, session_id: str = "default"):
         - ("response", str): 최종 응답
     """
     import asyncio
+
+    if config.FAKE_LLM:
+        # 테스트에서 체크포인트/LLM 호출 없이 응답 반환
+        yield ("response", f"fake: {message}")
+        return
 
     runtime_config = {"configurable": {"thread_id": session_id}}
     initial_state = {"messages": [HumanMessage(content=message)]}
