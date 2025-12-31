@@ -38,6 +38,7 @@ class CommandHandler:
         self.history = history
         self._running = True
         self._debug = False
+        self._thread_cache: list[str] = []  # /threads 결과를 번호로 접근하기 위한 캐시
 
     @property
     def running(self) -> bool:
@@ -111,7 +112,7 @@ class CommandHandler:
 
     @command("threads", "체크포인트에 저장된 thread 목록 표시")
     def _show_threads(self, _: str = "") -> None:
-        """체크포인트 DB의 thread 목록 출력"""
+        """체크포인트 DB의 thread 목록 출력 (번호 포함)"""
         try:
             with sqlite3.connect(str(config.CHECKPOINT_DB_PATH)) as conn:
                 rows = conn.execute(
@@ -124,23 +125,44 @@ class CommandHandler:
 
         if not rows:
             self.console.print("[yellow]저장된 thread가 없습니다[/yellow]")
+            self._thread_cache.clear()
             return
 
+        # 캐시 갱신
+        self._thread_cache = [str(thread_id) for thread_id, _, _ in rows]
+
         table = Table(title="저장된 thread 목록")
+        table.add_column("#", style="bold magenta", width=4)
         table.add_column("thread_id", style="cyan")
         table.add_column("checkpoint 수", style="green", justify="right")
         table.add_column("latest checkpoint", style="dim")
-        for thread_id, cnt, latest in rows:
-            table.add_row(str(thread_id), str(cnt), str(latest))
+
+        for idx, (thread_id, cnt, latest) in enumerate(rows, 1):
+            table.add_row(str(idx), str(thread_id), str(cnt), str(latest))
+
         self.console.print(table)
+        self.console.print("[dim]사용법: /load <번호> 또는 /load <thread_id>[/dim]")
 
     @command("load", "지정한 thread의 대화를 현재 히스토리로 덮어쓰기")
     def _load_thread(self, arg: str = "") -> None:
-        """thread_id의 최신 체크포인트를 현재 히스토리에 로드"""
-        thread_id = arg.strip()
-        if not thread_id:
-            self.console.print("[yellow]사용법: /load <thread_id>[/yellow]")
+        """thread_id 또는 번호로 최신 체크포인트를 현재 히스토리에 로드"""
+        input_arg = arg.strip()
+        if not input_arg:
+            self.console.print("[yellow]사용법: /load <번호> 또는 /load <thread_id>[/yellow]")
             return
+
+        # 숫자 입력인 경우 캐시에서 조회
+        if input_arg.isdigit():
+            idx = int(input_arg)
+            if idx < 1 or idx > len(self._thread_cache):
+                self.console.print(
+                    f"[yellow]번호가 범위를 벗어났습니다 (1-{len(self._thread_cache)})[/yellow]"
+                )
+                self.console.print("[dim]/threads 명령어로 목록을 먼저 확인하세요[/dim]")
+                return
+            thread_id = self._thread_cache[idx - 1]
+        else:
+            thread_id = input_arg
 
         try:
             with sqlite3.connect(str(config.CHECKPOINT_DB_PATH)) as conn:
