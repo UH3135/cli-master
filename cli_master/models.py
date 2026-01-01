@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 import uuid
 
 
@@ -30,3 +31,24 @@ class Message:
             content=data["content"],
             created_at=datetime.fromisoformat(data["created_at"]),
         )
+
+
+class TodoStatus(Enum):
+    """TODO 상태"""
+
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+
+
+@dataclass
+class TodoItem:
+    """TODO 항목"""
+
+    id: int
+    title: str
+    description: str
+    status: TodoStatus
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None = None
