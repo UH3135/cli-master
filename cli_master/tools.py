@@ -214,7 +214,9 @@ def update_todo_status(todo_id: int, status: str) -> str:
     try:
         status_enum = TodoStatus(status)
     except ValueError:
-        return f"오류: 잘못된 상태값 '{status}' (pending, in_progress, completed 중 선택)"
+        return (
+            f"오류: 잘못된 상태값 '{status}' (pending, in_progress, completed 중 선택)"
+        )
 
     todo = _todos[todo_id]
     todo.status = status_enum

@@ -72,7 +72,9 @@ def make_session_log(tmp_path: Path, name: str = "session.log") -> SessionLog:
     return SessionLog(tee=tee, buffer=buffer, file=file, path=path)
 
 
-def build_cli_env(tmp_path: Path, extra_env: dict[str, str] | None = None) -> dict[str, str]:
+def build_cli_env(
+    tmp_path: Path, extra_env: dict[str, str] | None = None
+) -> dict[str, str]:
     db_dir = tmp_path / "db"
     db_dir.mkdir(parents=True, exist_ok=True)
     history_db = db_dir / "history.db"
@@ -141,7 +143,9 @@ def send_ctrl_d(child: pexpect.spawn, timeout: float = 10) -> None:
     child.expect("프로그램을 종료합니다", timeout=timeout)
 
 
-def assert_no_error_strings(log_text: str, extra_errors: Iterable[str] | None = None) -> None:
+def assert_no_error_strings(
+    log_text: str, extra_errors: Iterable[str] | None = None
+) -> None:
     errors = list(ERROR_STRINGS)
     if extra_errors:
         errors.extend(extra_errors)
