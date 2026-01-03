@@ -7,11 +7,11 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.styles import Style
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.document import Document
-from prompt_toolkit.history import InMemoryHistory
-
 from .commands import CommandHandler, get_command_names
 from .completer import SlashCompleter
+from .config import config
 from .log import setup_logging
+from .repository import CheckpointRepository, PromptHistoryRepository
 from . import agent
 
 # prompt_toolkit 스타일 정의
@@ -32,9 +32,10 @@ def main():
 
     console.print("[bold cyan]CLI Master[/bold cyan]")
 
-    # 히스토리 및 자동완성 초기화
-    history = InMemoryHistory()
-    handler = CommandHandler(console, history)
+    # 저장소 및 자동완성 초기화
+    checkpoint_repo = CheckpointRepository(config.CHECKPOINT_DB_PATH)
+    prompt_repo = PromptHistoryRepository()
+    handler = CommandHandler(console, checkpoint_repo, prompt_repo)
     completer = SlashCompleter()
 
     console.print(
@@ -72,7 +73,7 @@ def main():
         style=prompt_style,
         completer=completer,
         complete_while_typing=True,
-        history=history,
+        history=prompt_repo.get_history(),
         multiline=False,
         key_bindings=bindings,
     )
