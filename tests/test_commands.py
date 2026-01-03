@@ -3,11 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from langchain_core.messages import AIMessage, HumanMessage
-from prompt_toolkit.history import InMemoryHistory
 from rich.console import Console
 
 from cli_master.commands import CommandHandler
 from cli_master.config import config
+from cli_master.repository import CheckpointRepository, PromptHistoryRepository
 from tests.e2e_helpers import seed_checkpoint_db
 
 
@@ -19,9 +19,9 @@ def _get_output(console: Console) -> str:
     return console.export_text()
 
 
-def _make_history(_: Path) -> InMemoryHistory:
-    # commands.py는 prompt_toolkit History를 사용한다.
-    return InMemoryHistory()
+def _make_repos(checkpoint_db: Path) -> tuple[CheckpointRepository, PromptHistoryRepository]:
+    """테스트용 repository 생성"""
+    return CheckpointRepository(checkpoint_db), PromptHistoryRepository()
 
 
 def _seed_other_thread_for_schema(checkpoint_db: Path) -> None:
@@ -35,8 +35,9 @@ def _seed_other_thread_for_schema(checkpoint_db: Path) -> None:
 
 def test_help_command(tmp_path):
     console = _make_console()
-    history = _make_history(tmp_path)
-    handler = CommandHandler(console, history)
+    checkpoint_db = tmp_path / "checkpoints.db"
+    checkpoint_repo, prompt_repo = _make_repos(checkpoint_db)
+    handler = CommandHandler(console, checkpoint_repo, prompt_repo)
 
     handler.handle("/help")
 
@@ -51,15 +52,11 @@ def test_help_command(tmp_path):
 
 def test_history_empty(tmp_path):
     console = _make_console()
-    history = _make_history(tmp_path)
     checkpoint_db = tmp_path / "checkpoints.db"
     _seed_other_thread_for_schema(checkpoint_db)
-    handler = CommandHandler(console, history)
-    # 테스트 격리를 위해 체크포인트 DB를 tmp로 강제
-    # (현재 thread에는 체크포인트가 없으므로 "히스토리가 비어있습니다"가 기대값)
-    #
-    # NOTE: config는 싱글톤이라 monkeypatch 대신 직접 setattr을 사용한다.
-    setattr(config, "CHECKPOINT_DB_PATH", checkpoint_db)
+    checkpoint_repo, prompt_repo = _make_repos(checkpoint_db)
+    handler = CommandHandler(console, checkpoint_repo, prompt_repo)
+    # 현재 thread에는 체크포인트가 없으므로 "히스토리가 비어있습니다"가 기대값
 
     handler.handle("/history")
 
@@ -69,15 +66,14 @@ def test_history_empty(tmp_path):
 
 def test_history_after_one_turn(tmp_path):
     console = _make_console()
-    history = _make_history(tmp_path)
     checkpoint_db = tmp_path / "checkpoints.db"
-    setattr(config, "CHECKPOINT_DB_PATH", checkpoint_db)
     seed_checkpoint_db(
         checkpoint_db,
         "seed-thread",
         [HumanMessage(content="안 1234"), AIMessage(content="fake: 안 1234")],
     )
-    handler = CommandHandler(console, history)
+    checkpoint_repo, prompt_repo = _make_repos(checkpoint_db)
+    handler = CommandHandler(console, checkpoint_repo, prompt_repo)
 
     handler.handle("/load seed-thread")
     handler.handle("/history")
@@ -88,15 +84,14 @@ def test_history_after_one_turn(tmp_path):
 
 def test_clear_history(tmp_path):
     console = _make_console()
-    history = _make_history(tmp_path)
     checkpoint_db = tmp_path / "checkpoints.db"
-    setattr(config, "CHECKPOINT_DB_PATH", checkpoint_db)
     seed_checkpoint_db(
         checkpoint_db,
         "seed-thread",
         [HumanMessage(content="테스트"), AIMessage(content="fake: 테스트")],
     )
-    handler = CommandHandler(console, history)
+    checkpoint_repo, prompt_repo = _make_repos(checkpoint_db)
+    handler = CommandHandler(console, checkpoint_repo, prompt_repo)
 
     handler.handle("/load seed-thread")
     handler.handle("/clear")
@@ -108,9 +103,7 @@ def test_clear_history(tmp_path):
 
 def test_history_output_format(tmp_path):
     console = _make_console()
-    history = _make_history(tmp_path)
     checkpoint_db = tmp_path / "checkpoints.db"
-    setattr(config, "CHECKPOINT_DB_PATH", checkpoint_db)
     seed_checkpoint_db(
         checkpoint_db,
         "seed-thread",
@@ -120,7 +113,8 @@ def test_history_output_format(tmp_path):
             HumanMessage(content="두번째"),
         ],
     )
-    handler = CommandHandler(console, history)
+    checkpoint_repo, prompt_repo = _make_repos(checkpoint_db)
+    handler = CommandHandler(console, checkpoint_repo, prompt_repo)
 
     handler.handle("/load seed-thread")
     handler.handle("/history")
@@ -136,9 +130,7 @@ def test_history_output_format(tmp_path):
 
 def test_clear_then_resume_history(tmp_path):
     console = _make_console()
-    history = _make_history(tmp_path)
     checkpoint_db = tmp_path / "checkpoints.db"
-    setattr(config, "CHECKPOINT_DB_PATH", checkpoint_db)
     seed_checkpoint_db(
         checkpoint_db,
         "seed-thread",
@@ -149,7 +141,8 @@ def test_clear_then_resume_history(tmp_path):
         "seed-thread-2",
         [HumanMessage(content="재시작"), AIMessage(content="재응답")],
     )
-    handler = CommandHandler(console, history)
+    checkpoint_repo, prompt_repo = _make_repos(checkpoint_db)
+    handler = CommandHandler(console, checkpoint_repo, prompt_repo)
 
     handler.handle("/load seed-thread")
     handler.handle("/clear")
@@ -163,8 +156,9 @@ def test_clear_then_resume_history(tmp_path):
 
 def test_unknown_command(tmp_path):
     console = _make_console()
-    history = _make_history(tmp_path)
-    handler = CommandHandler(console, history)
+    checkpoint_db = tmp_path / "checkpoints.db"
+    checkpoint_repo, prompt_repo = _make_repos(checkpoint_db)
+    handler = CommandHandler(console, checkpoint_repo, prompt_repo)
 
     handler.handle("/nope")
 
@@ -174,8 +168,9 @@ def test_unknown_command(tmp_path):
 
 def test_load_usage(tmp_path):
     console = _make_console()
-    history = _make_history(tmp_path)
-    handler = CommandHandler(console, history)
+    checkpoint_db = tmp_path / "checkpoints.db"
+    checkpoint_repo, prompt_repo = _make_repos(checkpoint_db)
+    handler = CommandHandler(console, checkpoint_repo, prompt_repo)
 
     handler.handle("/load")
 
@@ -183,12 +178,11 @@ def test_load_usage(tmp_path):
     assert "사용법: /load" in output
 
 
-def test_load_missing_thread(tmp_path, monkeypatch):
+def test_load_missing_thread(tmp_path):
     console = _make_console()
-    history = _make_history(tmp_path)
     checkpoint_db = tmp_path / "checkpoints.db"
-    monkeypatch.setattr(config, "CHECKPOINT_DB_PATH", checkpoint_db)
-    handler = CommandHandler(console, history)
+    checkpoint_repo, prompt_repo = _make_repos(checkpoint_db)
+    handler = CommandHandler(console, checkpoint_repo, prompt_repo)
 
     handler.handle("/load missing-thread")
 
@@ -196,32 +190,29 @@ def test_load_missing_thread(tmp_path, monkeypatch):
     assert "해당 thread_id의 체크포인트가 없습니다" in output
 
 
-def test_threads_empty(tmp_path, monkeypatch):
+def test_threads_empty(tmp_path):
     console = _make_console()
-    history = _make_history(tmp_path)
     checkpoint_db = tmp_path / "checkpoints.db"
-    monkeypatch.setattr(config, "CHECKPOINT_DB_PATH", checkpoint_db)
-    handler = CommandHandler(console, history)
-
     _seed_other_thread_for_schema(checkpoint_db)
+    checkpoint_repo, prompt_repo = _make_repos(checkpoint_db)
+    handler = CommandHandler(console, checkpoint_repo, prompt_repo)
+
     handler.handle("/threads")
 
     output = _get_output(console)
     assert "저장된 thread 목록" in output
 
 
-def test_threads_list(tmp_path, monkeypatch):
+def test_threads_list(tmp_path):
     console = _make_console()
-    history = _make_history(tmp_path)
     checkpoint_db = tmp_path / "checkpoints.db"
-    monkeypatch.setattr(config, "CHECKPOINT_DB_PATH", checkpoint_db)
-    handler = CommandHandler(console, history)
-
     seed_checkpoint_db(
         checkpoint_db,
         "seed-thread",
         [HumanMessage(content="seed user"), AIMessage(content="seed ai")],
     )
+    checkpoint_repo, prompt_repo = _make_repos(checkpoint_db)
+    handler = CommandHandler(console, checkpoint_repo, prompt_repo)
 
     handler.handle("/threads")
 
@@ -229,23 +220,20 @@ def test_threads_list(tmp_path, monkeypatch):
     assert "seed-thread" in output
 
 
-def test_load_thread_success(tmp_path, monkeypatch):
+def test_load_thread_success(tmp_path):
     console = _make_console()
-    history = _make_history(tmp_path)
     checkpoint_db = tmp_path / "checkpoints.db"
-    monkeypatch.setattr(config, "CHECKPOINT_DB_PATH", checkpoint_db)
-    handler = CommandHandler(console, history)
-
     seed_checkpoint_db(
         checkpoint_db,
         "seed-thread",
         [HumanMessage(content="seed user"), AIMessage(content="seed ai")],
     )
+    checkpoint_repo, prompt_repo = _make_repos(checkpoint_db)
+    handler = CommandHandler(console, checkpoint_repo, prompt_repo)
 
     handler.handle("/load seed-thread")
 
     output = _get_output(console)
     assert "seed-thread" in output
     # /load는 사용자 메시지(HumanMessage)만 prompt history에 저장한다.
-    assert hasattr(history, "_storage")
-    assert list(history._storage) == ["seed user"]
+    assert prompt_repo.get_entries() == ["seed user"]

@@ -1,19 +1,29 @@
 """슬래시 명령어 처리"""
 
 from typing import Callable
-import sqlite3
 import uuid
 
 from rich.console import Console
 from rich.table import Table
-from prompt_toolkit.history import History
-
-from .config import config
 from langchain_core.messages import AIMessage, HumanMessage
-from langgraph.checkpoint.sqlite import SqliteSaver
+
+from .repository import CheckpointRepository, PromptHistoryRepository
 
 # 모듈 레벨 명령어 레지스트리: {name: (handler, description)}
 _commands: dict[str, tuple[Callable, str]] = {}
+
+
+def _normalize_content(content) -> str:
+    """메시지 content를 문자열로 정규화 (Gemini 등 리스트 형태 지원)"""
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                parts.append(item.get("text", ""))
+        return "".join(parts).strip()
+    if isinstance(content, str):
+        return content.strip()
+    return str(content).strip()
 
 
 def get_command_names() -> list[str]:
@@ -34,9 +44,15 @@ def command(name: str, description: str = ""):
 class CommandHandler:
     """슬래시 명령어를 처리하는 클래스"""
 
-    def __init__(self, console: Console, history: History):
+    def __init__(
+        self,
+        console: Console,
+        checkpoint_repo: CheckpointRepository,
+        prompt_repo: PromptHistoryRepository,
+    ):
         self.console = console
-        self.history = history
+        self._checkpoint_repo = checkpoint_repo
+        self._prompt_repo = prompt_repo
         self._running = True
         self._debug = False
         self._thread_cache: list[str] = []  # /threads 결과를 번호로 접근하기 위한 캐시
@@ -84,48 +100,21 @@ class CommandHandler:
 
     @command("history", "현재 thread 히스토리 표시")
     def _show_history(self, _: str = "") -> None:
-        """SqliteSaver에서 현재 thread의 히스토리 출력"""
-        try:
-            with sqlite3.connect(str(config.CHECKPOINT_DB_PATH)) as conn:
-                saver = SqliteSaver(conn=conn)
-                runtime_config = {
-                    "configurable": {"thread_id": self._current_thread_id}
-                }
-                tup = saver.get_tuple(runtime_config)  # type: ignore
-        except sqlite3.Error as e:
-            self.console.print(f"[red]체크포인트 DB 조회 실패: {e}[/red]")
-            return
-
-        if not tup:
-            self.console.print("[yellow]히스토리가 비어있습니다[/yellow]")
-            return
-
-        _, checkpoint, _, _, _ = tup  # type: ignore
-        messages = checkpoint.get("channel_values", {}).get("messages", [])
+        """현재 thread의 히스토리 출력"""
+        messages = self._checkpoint_repo.get_history(self._current_thread_id)
         if not messages:
             self.console.print("[yellow]히스토리가 비어있습니다[/yellow]")
             return
-
-        def normalize_content(content) -> str:
-            if isinstance(content, list):
-                parts = []
-                for item in content:
-                    if isinstance(item, dict) and item.get("type") == "text":
-                        parts.append(item.get("text", ""))
-                return "".join(parts).strip()
-            if isinstance(content, str):
-                return content.strip()
-            return str(content).strip()
 
         # 메시지 추출
         items: list[tuple[str, str]] = []
         for msg in messages:
             if isinstance(msg, HumanMessage):
-                text = normalize_content(msg.content)
+                text = _normalize_content(msg.content)
                 if text:
                     items.append(("user", text))
             elif isinstance(msg, AIMessage):
-                text = normalize_content(msg.content)
+                text = _normalize_content(msg.content)
                 if text:
                     items.append(("ai", text))
 
@@ -154,9 +143,8 @@ class CommandHandler:
         # 새 thread ID 생성
         self._current_thread_id = str(uuid.uuid4())
 
-        # InMemoryHistory 초기화
-        if hasattr(self.history, "_storage"):
-            self.history._storage.clear()
+        # 프롬프트 히스토리 초기화
+        self._prompt_repo.clear()
 
         self.console.print(
             f"[green]새 대화를 시작합니다 (thread: {self._current_thread_id[:8]}...)[/green]"
@@ -171,23 +159,15 @@ class CommandHandler:
     @command("threads", "체크포인트에 저장된 thread 목록 표시")
     def _show_threads(self, _: str = "") -> None:
         """체크포인트 DB의 thread 목록 출력 (번호 포함)"""
-        try:
-            with sqlite3.connect(str(config.CHECKPOINT_DB_PATH)) as conn:
-                rows = conn.execute(
-                    "SELECT thread_id, COUNT(*) AS cnt, MAX(checkpoint_id) AS latest "
-                    "FROM checkpoints GROUP BY thread_id ORDER BY latest DESC"
-                ).fetchall()
-        except sqlite3.Error as e:
-            self.console.print(f"[red]체크포인트 DB 조회 실패: {e}[/red]")
-            return
+        threads = self._checkpoint_repo.list_threads()
 
-        if not rows:
+        if not threads:
             self.console.print("[yellow]저장된 thread가 없습니다[/yellow]")
             self._thread_cache.clear()
             return
 
         # 캐시 갱신
-        self._thread_cache = [str(thread_id) for thread_id, _, _ in rows]
+        self._thread_cache = [t.thread_id for t in threads]
 
         table = Table(title="저장된 thread 목록")
         table.add_column("#", style="bold magenta", width=4)
@@ -195,8 +175,10 @@ class CommandHandler:
         table.add_column("checkpoint 수", style="green", justify="right")
         table.add_column("latest checkpoint", style="dim")
 
-        for idx, (thread_id, cnt, latest) in enumerate(rows, 1):
-            table.add_row(str(idx), str(thread_id), str(cnt), str(latest))
+        for idx, t in enumerate(threads, 1):
+            table.add_row(
+                str(idx), t.thread_id, str(t.checkpoint_count), t.latest_checkpoint_id
+            )
 
         self.console.print(table)
         self.console.print("[dim]사용법: /load <번호> 또는 /load <thread_id>[/dim]")
@@ -225,51 +207,23 @@ class CommandHandler:
         else:
             thread_id = input_arg
 
-        try:
-            with sqlite3.connect(str(config.CHECKPOINT_DB_PATH)) as conn:
-                saver = SqliteSaver(conn=conn)
-                runtime_config = {"configurable": {"thread_id": thread_id}}
-                tup = saver.get_tuple(runtime_config)  # type: ignore
-        except sqlite3.Error as e:
-            self.console.print(f"[red]체크포인트 DB 조회 실패: {e}[/red]")
-            return
-
-        if not tup:
+        messages = self._checkpoint_repo.get_history(thread_id)
+        if not messages:
             self.console.print(
                 "[yellow]해당 thread_id의 체크포인트가 없습니다[/yellow]"
             )
             return
 
-        _, checkpoint, _, _, _ = tup  # type: ignore
-        messages = checkpoint.get("channel_values", {}).get("messages", [])
-        if not messages:
-            self.console.print("[yellow]체크포인트에 메시지가 없습니다[/yellow]")
-            return
-
-        def normalize_content(content) -> str:
-            if isinstance(content, list):
-                parts = []
-                for item in content:
-                    if isinstance(item, dict) and item.get("type") == "text":
-                        parts.append(item.get("text", ""))
-                return "".join(parts).strip()
-            if isinstance(content, str):
-                return content.strip()
-            return str(content).strip()
-
         # 사용자 메시지만 추출 (방향키 탐색용)
         user_messages = []
         for msg in messages:
             if isinstance(msg, HumanMessage):
-                text = normalize_content(msg.content)
+                text = _normalize_content(msg.content)
                 if text:
                     user_messages.append(text)
 
-        # InMemoryHistory 갱신
-        if hasattr(self.history, "_storage"):
-            self.history._storage.clear()
-        for msg in user_messages:
-            self.history.store_string(msg)
+        # 프롬프트 히스토리 갱신
+        self._prompt_repo.load_from_messages(user_messages)
 
         # 현재 thread ID 전환
         self._current_thread_id = thread_id
