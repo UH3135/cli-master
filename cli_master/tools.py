@@ -258,3 +258,26 @@ def clear_todos() -> str:
 def get_tools() -> list[BaseTool]:
     """모듈 내 모든 도구 자동 수집"""
     return [obj for obj in globals().values() if isinstance(obj, BaseTool)]
+
+
+# ============================================
+# Registry 자동 등록
+# ============================================
+
+
+def _auto_register_tools():
+    """모듈 내 도구 자동 등록"""
+    from .registry import get_registry, ToolCategory
+
+    registry = get_registry()
+    registry.register(cat, category=ToolCategory.FILESYSTEM)
+    registry.register(tree, category=ToolCategory.FILESYSTEM)
+    registry.register(grep, category=ToolCategory.SEARCH)
+    registry.register(create_todo, category=ToolCategory.TODO)
+    registry.register(list_todos, category=ToolCategory.TODO)
+    registry.register(update_todo_status, category=ToolCategory.TODO)
+    registry.register(clear_todos, category=ToolCategory.TODO)
+
+
+# 모듈 임포트 시 자동 실행
+_auto_register_tools()

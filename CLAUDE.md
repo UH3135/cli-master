@@ -12,6 +12,11 @@
   - [Graph Structure](#graph-structure)
   - [Core Components](#core-components)
   - [Public API](#public-api)
+- [Tool Registry Architecture](#tool-registry-architecture)
+  - [Overview](#overview)
+  - [ToolRegistry 클래스](#toolregistry-클래스)
+  - [도구 카테고리](#도구-카테고리)
+  - [사용 방법](#사용-방법)
 - [Development Notes](#development-notes)
   - [Code Style](#code-style)
 
@@ -42,6 +47,7 @@ cli_master/
   completer.py   # 자동완성
   config.py      # 설정 관리
   tools.py       # 커스텀 도구
+  registry.py    # 도구 레지스트리 (중앙 집중식 도구 관리)
 ```
 
 ### Architecture Rules
@@ -99,6 +105,121 @@ def stream(message: str):
     """스트리밍 응답 생성
     Yields: (event_type, data)
     """
+```
+
+---
+
+## Tool Registry Architecture
+
+### Overview
+
+ToolRegistry는 옵저버/레지스트리 패턴 기반의 중앙 집중식 도구 관리 시스템입니다. 모든 도구(LangChain 공식 도구 + 커스텀 도구)를 한 곳에서 관리하여 확장성과 유지보수성을 향상시킵니다.
+
+**주요 특징**:
+- 싱글톤 패턴으로 전역 도구 관리
+- 카테고리별 도구 분류 (filesystem, custom, todo, search)
+- 도구 활성화/비활성화 기능
+- 자동 등록 메커니즘
+- 중복 등록 방지
+
+### ToolRegistry 클래스
+
+**위치**: `cli_master/registry.py`
+
+**핵심 메서드**:
+```python
+class ToolRegistry:
+    def register(tool: BaseTool, category: str, replace: bool = False)
+        """도구 등록 (중복 시 ValueError)"""
+
+    def register_multiple(tools: list[BaseTool], category: str, replace: bool = False)
+        """여러 도구 일괄 등록"""
+
+    def get_all_tools() -> list[BaseTool]
+        """모든 활성화된 도구 반환"""
+
+    def get_tools_by_category(category: str) -> list[BaseTool]
+        """카테고리별 도구 조회"""
+
+    def disable_tool(tool_name: str)
+        """도구 비활성화"""
+
+    def enable_tool(tool_name: str)
+        """도구 활성화"""
+
+    def unregister(tool_name: str)
+        """도구 등록 해제"""
+
+    def list_categories() -> list[str]
+        """등록된 카테고리 목록"""
+
+    def get_tool_names(include_disabled: bool = False) -> list[str]
+        """등록된 도구 이름 목록"""
+```
+
+**사용 예시**:
+```python
+from cli_master.registry import get_registry, ToolCategory
+
+registry = get_registry()
+
+# 도구 등록
+registry.register(my_tool, category=ToolCategory.CUSTOM)
+
+# 모든 도구 조회
+all_tools = registry.get_all_tools()
+
+# 카테고리별 조회
+fs_tools = registry.get_tools_by_category(ToolCategory.FILESYSTEM)
+```
+
+### 도구 카테고리
+
+```python
+class ToolCategory:
+    FILESYSTEM = "filesystem"  # 파일 시스템 도구 (cat, tree, read_file 등)
+    CUSTOM = "custom"          # 일반 커스텀 도구
+    TODO = "todo"              # TODO 관리 도구
+    SEARCH = "search"          # 검색 도구 (grep, file_search 등)
+```
+
+### 사용 방법
+
+#### 1. 커스텀 도구 추가
+
+**단계 1**: `tools.py`에 `@tool` 데코레이터로 함수 정의
+```python
+@tool
+def my_custom_tool(arg: str) -> str:
+    """새로운 커스텀 도구"""
+    return f"Result: {arg}"
+```
+
+**단계 2**: `_auto_register_tools()` 함수에 등록 추가
+```python
+def _auto_register_tools():
+    registry = get_registry()
+    # ... 기존 등록들
+    registry.register(my_custom_tool, category=ToolCategory.CUSTOM)
+```
+
+**단계 3**: 모듈 임포트 시 자동으로 등록됨
+
+#### 2. LangChain 도구 추가
+
+LangChain 도구는 `agent.py`의 `_build_graph()` 함수에서 자동으로 등록됩니다:
+```python
+# FileManagementToolkit 도구들이 자동 등록됨
+toolkit = FileManagementToolkit(...)
+registry.register_multiple(toolkit.get_tools(), category=ToolCategory.FILESYSTEM, replace=True)
+```
+
+#### 3. 도구 비활성화
+
+환경 변수나 설정을 통해 특정 도구를 비활성화할 수 있습니다:
+```python
+registry = get_registry()
+registry.disable_tool("write_file")  # 쓰기 도구 비활성화
 ```
 
 ---

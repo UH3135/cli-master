@@ -18,7 +18,6 @@ from langchain_community.agent_toolkits import FileManagementToolkit
 from langgraph.checkpoint.sqlite import SqliteSaver
 import aiosqlite
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-from .tools import get_tools
 from langgraph.graph import StateGraph, END
 
 from .config import config
@@ -81,7 +80,12 @@ def _build_graph(checkpointer):
         temperature=config.MODEL_TEMPERATURE,
     )
 
-    # 2. 도구 준비
+    # 2. 도구 준비 (Registry 사용)
+    from .registry import get_registry, ToolCategory
+
+    registry = get_registry()
+
+    # LangChain 도구를 Registry에 등록
     toolkit = FileManagementToolkit(
         root_dir=".",
         selected_tools=[
@@ -94,9 +98,12 @@ def _build_graph(checkpointer):
             "file_delete",
         ],
     )
-    toolkit_tools = toolkit.get_tools()
-    custom_tools = get_tools()
-    all_tools = toolkit_tools + custom_tools
+    registry.register_multiple(
+        toolkit.get_tools(), category=ToolCategory.FILESYSTEM, replace=True
+    )
+
+    # Registry에서 모든 도구 가져오기
+    all_tools = registry.get_all_tools()
 
     tools_by_name = {tool.name: tool for tool in all_tools}
     logger.info("Loaded {} tools: {}", len(all_tools), list(tools_by_name.keys()))
