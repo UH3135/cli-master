@@ -39,10 +39,14 @@ uv run cli-master
 cli_master/
   main.py        # 진입점
   agent.py       # AI 에이전트 (LangGraph + Gemini)
-  commands.py    # 명령어 처리
+  commands.py    # 슬래시 명령어 처리
   config.py      # 환경 설정
-  history.py     # 히스토리 관리
   models.py      # 데이터 모델
   completer.py   # 자동완성
+  log.py         # 로깅 설정
   tools.py       # 커스텀 도구
+  registry.py    # 도구 레지스트리
+  repository/    # 데이터 저장소 계층
+    checkpoint.py      # 체크포인트 저장소
+    prompt_history.py  # 프롬프트 히스토리 저장소
 ```
