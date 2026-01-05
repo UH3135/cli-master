@@ -5,6 +5,8 @@ from datetime import datetime
 from enum import Enum
 import uuid
 
+from pydantic import BaseModel, Field
+
 
 @dataclass
 class Message:
@@ -52,3 +54,24 @@ class TodoItem:
     created_at: datetime
     updated_at: datetime
     completed_at: datetime | None = None
+
+
+# Plan-Execute 패턴용 Pydantic 모델
+
+
+class Plan(BaseModel):
+    """다단계 실행 계획"""
+
+    steps: list[str] = Field(description="정렬된 순서의 실행 단계 목록")
+
+
+class Response(BaseModel):
+    """최종 응답"""
+
+    response: str = Field(description="사용자에게 전달할 최종 응답")
+
+
+class Act(BaseModel):
+    """Replanner 행동 결정"""
+
+    action: Response | Plan = Field(description="최종 응답 또는 새 계획")

@@ -66,6 +66,245 @@ class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add]
 
 
+class PlanExecuteState(TypedDict):
+    """Plan-and-Execute 에이전트 상태"""
+
+    # 기존 호환성
+    messages: Annotated[Sequence[BaseMessage], add]
+    # Plan-Execute 필드
+    input: str  # 원래 사용자 입력
+    plan: list[str]  # 실행할 계획 단계들
+    current_step_index: int  # 현재 실행 중인 단계 인덱스
+    past_steps: Annotated[list[tuple[str, str]], add]  # (단계, 결과) 히스토리
+    response: str | None  # 최종 응답 (완료 시)
+    replan_count: int  # 재계획 횟수 (최대 3회)
+
+
+def classify_request(message: str) -> str:
+    """단순 질문 vs 복잡한 작업 분류
+
+    Args:
+        message: 사용자 입력 메시지
+
+    Returns:
+        "simple" | "complex"
+    """
+    # 복잡한 작업을 나타내는 키워드
+    complex_keywords = [
+        "분석",
+        "업데이트",
+        "수정",
+        "생성",
+        "삭제",
+        "리팩토링",
+        "그리고",
+        "후에",
+        "읽고",
+        "요약",
+    ]
+
+    # 키워드 매칭
+    if any(kw in message for kw in complex_keywords):
+        return "complex"
+
+    # 짧은 메시지는 단순 질문
+    if len(message) < 20:
+        return "simple"
+
+    return "complex"
+
+
+def plan_step(state: PlanExecuteState) -> dict:
+    """Planner 노드: 사용자 요청을 분석하여 다단계 계획 생성
+
+    Args:
+        state: 현재 에이전트 상태
+
+    Returns:
+        plan과 current_step_index를 포함하는 dict
+    """
+    if config.FAKE_LLM:
+        # 테스트 모드: 간단한 계획 반환
+        return {"plan": ["단계 1: 작업 수행"], "current_step_index": 0}
+
+    # TODO: 실제 LLM 호출로 계획 생성
+    # 지금은 간단한 기본 계획 반환
+    user_input = state.get("input", "")
+    return {
+        "plan": [f"작업 수행: {user_input}"],
+        "current_step_index": 0,
+    }
+
+
+def execute_step(state: PlanExecuteState) -> dict:
+    """Executor 노드: 현재 단계를 실행
+
+    Args:
+        state: 현재 에이전트 상태
+
+    Returns:
+        current_step_index 증가 + past_steps에 결과 추가
+    """
+    plan = state.get("plan", [])
+    current_idx = state.get("current_step_index", 0)
+
+    # 모든 단계가 완료된 경우
+    if current_idx >= len(plan):
+        return {"response": "모든 단계가 완료되었습니다."}
+
+    current_task = plan[current_idx]
+
+    if config.FAKE_LLM:
+        # 테스트 모드: 간단한 결과 반환
+        result = f"fake 실행 결과: {current_task}"
+    else:
+        # TODO: 실제 도구 호출로 작업 수행
+        result = f"실행 완료: {current_task}"
+
+    return {
+        "past_steps": [(current_task, result)],
+        "current_step_index": current_idx + 1,
+    }
+
+
+# 최대 재계획 횟수
+MAX_REPLAN_COUNT = 3
+
+
+def replan_step(state: PlanExecuteState) -> dict:
+    """Replanner 노드: 실행 결과를 평가하고 완료/재계획 결정
+
+    Args:
+        state: 현재 에이전트 상태
+
+    Returns:
+        response (완료 시) 또는 새 plan + replan_count 증가 (재계획 시)
+    """
+    replan_count = state.get("replan_count", 0)
+    past_steps = state.get("past_steps", [])
+    user_input = state.get("input", "")
+
+    # 재계획 횟수 제한 도달 시 강제 종료
+    if replan_count >= MAX_REPLAN_COUNT:
+        # 지금까지의 결과를 요약하여 응답
+        results_summary = "\n".join([f"- {step}: {result}" for step, result in past_steps])
+        return {
+            "response": f"최대 재계획 횟수({MAX_REPLAN_COUNT}회)에 도달했습니다.\n\n실행 결과:\n{results_summary}"
+        }
+
+    if config.FAKE_LLM:
+        # 테스트 모드: 간단한 응답 반환
+        results_summary = "\n".join([f"- {step}: {result}" for step, result in past_steps])
+        return {"response": f"작업이 완료되었습니다.\n\n결과:\n{results_summary}"}
+
+    # TODO: 실제 LLM 호출로 완료 여부 판단
+    # 지금은 간단히 완료 처리
+    results_summary = "\n".join([f"- {step}: {result}" for step, result in past_steps])
+    return {"response": f"'{user_input}' 작업이 완료되었습니다.\n\n결과:\n{results_summary}"}
+
+
+def _build_hybrid_graph(checkpointer):
+    """하이브리드 그래프 생성 (ReAct + Plan-Execute)
+
+    구조:
+    [Start] → Router → (단순) → agent → tools → ... → [End]
+                     → (복잡) → planner → executor → replanner → [End]
+    """
+    from langchain_core.messages import HumanMessage
+
+    # 노드 함수 정의
+    def router_node(state: PlanExecuteState) -> dict:
+        """라우터: 요청 복잡도에 따라 경로 결정"""
+        messages = state.get("messages", [])
+        if messages:
+            last_human = None
+            for msg in reversed(messages):
+                if isinstance(msg, HumanMessage):
+                    last_human = msg.content
+                    break
+            if last_human:
+                return {"input": last_human}
+        return {"input": state.get("input", "")}
+
+    def route_by_complexity(state: PlanExecuteState) -> str:
+        """복잡도 기반 라우팅 결정"""
+        user_input = state.get("input", "")
+        return classify_request(user_input)
+
+    def planner_node(state: PlanExecuteState) -> dict:
+        """Planner 노드 래퍼"""
+        return plan_step(state)
+
+    def executor_node(state: PlanExecuteState) -> dict:
+        """Executor 노드 래퍼"""
+        return execute_step(state)
+
+    def replanner_node(state: PlanExecuteState) -> dict:
+        """Replanner 노드 래퍼"""
+        return replan_step(state)
+
+    def should_continue_execution(state: PlanExecuteState) -> str:
+        """실행 계속 여부 결정"""
+        # 응답이 생성되었으면 종료
+        if state.get("response"):
+            return END
+
+        # 모든 단계가 완료되면 replanner로
+        plan = state.get("plan", [])
+        current_idx = state.get("current_step_index", 0)
+        if current_idx >= len(plan):
+            return "replanner"
+
+        # 아직 실행할 단계가 있으면 계속 실행
+        return "executor"
+
+    def should_replan(state: PlanExecuteState) -> str:
+        """재계획 또는 종료 결정"""
+        # 응답이 있으면 종료
+        if state.get("response"):
+            return END
+        # 새 계획이 있으면 다시 실행
+        return "executor"
+
+    # 그래프 구축
+    workflow = StateGraph(PlanExecuteState)
+
+    # 노드 추가
+    workflow.add_node("router", router_node)
+    workflow.add_node("planner", planner_node)
+    workflow.add_node("executor", executor_node)
+    workflow.add_node("replanner", replanner_node)
+
+    # 시작점
+    workflow.set_entry_point("router")
+
+    # 라우터 조건부 엣지 (simple → END, complex → planner)
+    workflow.add_conditional_edges(
+        "router",
+        route_by_complexity,
+        {"simple": END, "complex": "planner"},
+    )
+
+    # planner → executor
+    workflow.add_edge("planner", "executor")
+
+    # executor → (조건부) → executor/replanner/END
+    workflow.add_conditional_edges(
+        "executor",
+        should_continue_execution,
+        {"executor": "executor", "replanner": "replanner", END: END},
+    )
+
+    # replanner → (조건부) → executor/END
+    workflow.add_conditional_edges(
+        "replanner",
+        should_replan,
+        {"executor": "executor", END: END},
+    )
+
+    return workflow.compile(checkpointer=checkpointer)
+
+
 # 싱글톤 graph 인스턴스
 _graph = None
 _checkpointer = None
@@ -337,3 +576,85 @@ def stream(message: str, session_id: str = "default"):
                 pass
             finally:
                 loop.close()
+
+
+def stream_hybrid(message: str, session_id: str = "default"):
+    """하이브리드 그래프 스트리밍 응답 생성
+
+    Args:
+        message: 사용자 메시지
+        session_id: 세션 ID
+
+    Yields:
+        tuple: (event_type, data)
+        - ("plan_start", {"steps": list[str]}): 계획 생성 완료
+        - ("step_start", {"step": str, "index": int}): 단계 실행 시작
+        - ("step_end", {"step": str, "result": str}): 단계 실행 완료
+        - ("response", str): 최종 응답
+    """
+    if config.FAKE_LLM:
+        # 테스트 모드: 하이브리드 그래프를 실제로 실행
+        _graph = _build_hybrid_graph(checkpointer=None)
+
+        initial_state: PlanExecuteState = {
+            "messages": [HumanMessage(content=message)],
+            "input": message,
+            "plan": [],
+            "current_step_index": 0,
+            "past_steps": [],
+            "response": None,
+            "replan_count": 0,
+        }
+
+        # 단순 요청인 경우
+        if classify_request(message) == "simple":
+            yield ("response", f"fake: {message}")
+            return
+
+        # 복잡한 요청: Plan-Execute 흐름
+        # 1. 계획 생성
+        plan_result = plan_step(initial_state)
+        steps = plan_result.get("plan", [])
+        yield ("plan_start", {"steps": steps})
+
+        # 2. 각 단계 실행
+        current_state: PlanExecuteState = {
+            **initial_state,
+            "plan": plan_result.get("plan", []),
+            "current_step_index": plan_result.get("current_step_index", 0),
+        }
+        while current_state.get("current_step_index", 0) < len(steps):
+            step_idx = current_state["current_step_index"]
+            step_name = steps[step_idx]
+
+            yield ("step_start", {"step": step_name, "index": step_idx})
+
+            exec_result = execute_step(current_state)
+
+            # past_steps는 리듀서로 누적되므로 직접 병합
+            new_past_steps = list(current_state.get("past_steps", []))
+            if "past_steps" in exec_result:
+                new_past_steps.extend(exec_result["past_steps"])
+
+            current_state = {
+                **current_state,
+                "current_step_index": exec_result.get(
+                    "current_step_index", current_state["current_step_index"]
+                ),
+                "past_steps": new_past_steps,
+                "response": exec_result.get("response"),
+            }
+
+            if exec_result.get("past_steps"):
+                _, result = exec_result["past_steps"][0]
+                yield ("step_end", {"step": step_name, "result": result})
+
+        # 3. Replanner로 최종 응답 생성
+        replan_result = replan_step(current_state)
+        if replan_result.get("response"):
+            yield ("response", replan_result["response"])
+
+        return
+
+    # 실제 LLM 모드 (향후 구현)
+    yield ("response", f"LLM 응답: {message}")

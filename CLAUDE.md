@@ -17,6 +17,10 @@
   - [ToolRegistry 클래스](#toolregistry-클래스)
   - [도구 카테고리](#도구-카테고리)
   - [사용 방법](#사용-방법)
+- [Repository Pattern Architecture](#repository-pattern-architecture)
+  - [Overview](#overview-1)
+  - [CheckpointRepository](#checkpointrepository)
+  - [PromptHistoryRepository](#prompthistoryrepository)
 - [Development Notes](#development-notes)
   - [Code Style](#code-style)
 
@@ -41,13 +45,17 @@
 cli_master/
   main.py        # 진입점 (조립만)
   agent.py       # AI 에이전트 (LangGraph 기반)
-  commands.py    # 명령어 처리
-  history.py     # 히스토리 관리
+  commands.py    # 슬래시 명령어 처리
   models.py      # 데이터 모델
   completer.py   # 자동완성
   config.py      # 설정 관리
+  log.py         # 로깅 설정
   tools.py       # 커스텀 도구
   registry.py    # 도구 레지스트리 (중앙 집중식 도구 관리)
+  repository/    # 데이터 저장소 계층 (Repository 패턴)
+    __init__.py
+    checkpoint.py      # 체크포인트 저장소
+    prompt_history.py  # 프롬프트 히스토리 저장소
 ```
 
 ### Architecture Rules
@@ -135,6 +143,9 @@ class ToolRegistry:
     def register_multiple(tools: list[BaseTool], category: str, replace: bool = False)
         """여러 도구 일괄 등록"""
 
+    def get_tool(name: str) -> BaseTool | None
+        """이름으로 도구 조회"""
+
     def get_all_tools() -> list[BaseTool]
         """모든 활성화된 도구 반환"""
 
@@ -155,6 +166,9 @@ class ToolRegistry:
 
     def get_tool_names(include_disabled: bool = False) -> list[str]
         """등록된 도구 이름 목록"""
+
+    def clear()
+        """모든 도구 제거 (테스트용)"""
 ```
 
 **사용 예시**:
@@ -220,6 +234,93 @@ registry.register_multiple(toolkit.get_tools(), category=ToolCategory.FILESYSTEM
 ```python
 registry = get_registry()
 registry.disable_tool("write_file")  # 쓰기 도구 비활성화
+```
+
+---
+
+## Repository Pattern Architecture
+
+### Overview
+
+Repository 패턴을 도입하여 데이터 저장소 계층을 분리합니다. 이를 통해 비즈니스 로직과 데이터 접근 로직을 명확히 분리하고, 테스트 용이성을 높입니다.
+
+**위치**: `cli_master/repository/`
+
+**주요 저장소**:
+- `CheckpointRepository`: LangGraph 체크포인트 (Long Term 저장소)
+- `PromptHistoryRepository`: 프롬프트 입력 히스토리 (Short Term 저장소)
+
+### CheckpointRepository
+
+SQLite 기반 체크포인트 저장소. LangGraph의 SqliteSaver를 래핑하여 추가 기능 제공.
+
+```python
+class CheckpointRepository:
+    def __init__(self, db_path: Path)
+        """저장소 초기화"""
+
+    def get_checkpointer() -> SqliteSaver
+        """동기 checkpointer 반환 (싱글톤)"""
+
+    def get_history(thread_id: str) -> list[BaseMessage] | None
+        """특정 thread의 대화 히스토리 조회"""
+
+    def list_threads() -> list[ThreadInfo]
+        """저장된 모든 thread 목록 조회"""
+
+    def thread_exists(thread_id: str) -> bool
+        """thread 존재 여부 확인"""
+
+    def close()
+        """리소스 정리"""
+```
+
+**사용 예시**:
+```python
+from cli_master.repository import CheckpointRepository
+
+repo = CheckpointRepository(Path("db/checkpoint.db"))
+
+# thread 목록 조회
+threads = repo.list_threads()
+
+# 대화 히스토리 조회
+messages = repo.get_history("thread_id")
+```
+
+### PromptHistoryRepository
+
+InMemoryHistory 래핑 - prompt_toolkit 히스토리 관리.
+
+```python
+class PromptHistoryRepository:
+    def get_history() -> History
+        """prompt_toolkit History 객체 반환"""
+
+    def add_entry(text: str)
+        """히스토리 항목 추가"""
+
+    def clear()
+        """히스토리 초기화"""
+
+    def load_from_messages(messages: list[str])
+        """메시지 목록으로 히스토리 갱신"""
+
+    def get_entries() -> list[str]
+        """모든 히스토리 항목 반환"""
+```
+
+**사용 예시**:
+```python
+from cli_master.repository import PromptHistoryRepository
+
+repo = PromptHistoryRepository()
+
+# PromptSession에 연결
+session = PromptSession(history=repo.get_history())
+
+# 히스토리 갱신
+repo.load_from_messages(["질문1", "질문2"])
 ```
 
 ---
