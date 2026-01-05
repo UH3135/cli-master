@@ -80,16 +80,33 @@ class PlanExecuteState(TypedDict):
     replan_count: int  # 재계획 횟수 (최대 3회)
 
 
-def classify_request(message: str) -> str:
+def classify_request(message: str, llm: ChatGoogleGenerativeAI | None = None) -> str:
     """단순 질문 vs 복잡한 작업 분류
 
     Args:
         message: 사용자 입력 메시지
+        llm: LLM 인스턴스 (제공 시 LLM 기반 분류, 없으면 룰베이스)
 
     Returns:
         "simple" | "complex"
     """
-    # 복잡한 작업을 나타내는 키워드
+    # LLM 기반 분류
+    if llm is not None:
+        from .models import ComplexityClassification
+
+        classifier = llm.with_structured_output(ComplexityClassification)
+        prompt = f"""다음 사용자 요청을 분류하세요:
+
+요청: {message}
+
+분류 기준:
+- simple: 단순 질문, 정보 조회, 한 번의 응답으로 완료 가능
+- complex: 여러 단계 필요, 파일 수정, 분석 후 작업 등"""
+
+        result: ComplexityClassification = classifier.invoke(prompt)  # type: ignore[assignment]
+        return result.complexity
+
+    # 룰베이스 fallback
     complex_keywords = [
         "분석",
         "업데이트",
@@ -103,11 +120,9 @@ def classify_request(message: str) -> str:
         "요약",
     ]
 
-    # 키워드 매칭
     if any(kw in message for kw in complex_keywords):
         return "complex"
 
-    # 짧은 메시지는 단순 질문
     if len(message) < 20:
         return "simple"
 

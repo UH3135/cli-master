@@ -5,7 +5,18 @@ from datetime import datetime
 from enum import Enum
 import uuid
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+
+class ComplexityClassification(BaseModel):
+    """요청 복잡도 분류 결과 (LLM Structured Output용)"""
+
+    complexity: Literal["simple", "complex"] = Field(
+        description="작업 복잡도: 'simple' (단순 질문/조회) 또는 'complex' (다단계 작업)"
+    )
+    reason: str = Field(description="분류 이유")
 
 
 @dataclass

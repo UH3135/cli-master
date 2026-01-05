@@ -310,6 +310,91 @@ class TestHybridGraph:
         assert "replanner" in node_names
 
 
+class TestComplexityClassificationModel:
+    """ComplexityClassification Pydantic 모델 테스트"""
+
+    def test_model_has_complexity_field(self):
+        """모델이 complexity 필드를 가지는지 확인"""
+        from cli_master.models import ComplexityClassification
+
+        result = ComplexityClassification(complexity="simple", reason="짧은 인사말")
+        assert result.complexity == "simple"
+
+    def test_model_has_reason_field(self):
+        """모델이 reason 필드를 가지는지 확인"""
+        from cli_master.models import ComplexityClassification
+
+        result = ComplexityClassification(complexity="complex", reason="다단계 작업 필요")
+        assert result.reason == "다단계 작업 필요"
+
+    def test_model_validates_complexity_literal(self):
+        """complexity는 'simple' 또는 'complex'만 허용"""
+        from cli_master.models import ComplexityClassification
+        from pydantic import ValidationError
+        import pytest
+
+        with pytest.raises(ValidationError):
+            ComplexityClassification(complexity="invalid", reason="테스트")
+
+
+class TestLLMClassifyRequest:
+    """LLM 기반 요청 분류 테스트"""
+
+    def test_classify_request_accepts_llm_parameter(self):
+        """classify_request가 llm 파라미터를 받는지 확인"""
+        from cli_master.agent import classify_request
+        from unittest.mock import MagicMock
+
+        mock_llm = MagicMock()
+        # llm 파라미터를 받을 수 있어야 함 (TypeError 없이)
+        try:
+            classify_request("테스트", llm=mock_llm)
+        except TypeError as e:
+            if "llm" in str(e):
+                raise AssertionError("classify_request가 llm 파라미터를 지원해야 합니다")
+
+    def test_classify_with_llm_returns_simple(self):
+        """LLM이 simple로 분류하면 'simple' 반환"""
+        from cli_master.agent import classify_request
+        from cli_master.models import ComplexityClassification
+        from unittest.mock import MagicMock
+
+        mock_llm = MagicMock()
+        mock_structured = MagicMock()
+        mock_structured.invoke.return_value = ComplexityClassification(
+            complexity="simple", reason="단순 인사"
+        )
+        mock_llm.with_structured_output.return_value = mock_structured
+
+        result = classify_request("안녕하세요", llm=mock_llm)
+        assert result == "simple"
+
+    def test_classify_with_llm_returns_complex(self):
+        """LLM이 complex로 분류하면 'complex' 반환"""
+        from cli_master.agent import classify_request
+        from cli_master.models import ComplexityClassification
+        from unittest.mock import MagicMock
+
+        mock_llm = MagicMock()
+        mock_structured = MagicMock()
+        mock_structured.invoke.return_value = ComplexityClassification(
+            complexity="complex", reason="다단계 작업"
+        )
+        mock_llm.with_structured_output.return_value = mock_structured
+
+        result = classify_request("프로젝트를 분석하고 리팩토링해줘", llm=mock_llm)
+        assert result == "complex"
+
+    def test_classify_without_llm_uses_fallback(self):
+        """llm 파라미터 없으면 기존 룰베이스 로직 사용"""
+        from cli_master.agent import classify_request
+
+        # 기존 동작 유지: 짧은 메시지는 simple
+        assert classify_request("안녕") == "simple"
+        # 키워드 포함 시 complex
+        assert classify_request("코드를 분석해줘") == "complex"
+
+
 class TestStreamEvents:
     """스트리밍 이벤트 테스트 - Plan-Execute UI 표시용"""
 
