@@ -43,6 +43,10 @@ class Config:
         # 테스트용 가짜 LLM 모드
         self.FAKE_LLM = os.getenv("CLI_MASTER_FAKE_LLM", "0") == "1"
 
+        # LangGraph 설정
+        self.DEFAULT_RECURSION_LIMIT = int(os.getenv("RECURSION_LIMIT", "25"))
+        self.RESEARCH_RECURSION_LIMIT = int(os.getenv("RESEARCH_RECURSION_LIMIT", "50"))
+
         # 파일 접근 정책
         self.FILE_ACCESS_POLICY = self._build_file_access_policy()
 

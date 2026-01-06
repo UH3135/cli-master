@@ -238,6 +238,7 @@ class ResearchAgent:
 
         # 에이전트 스트리밍으로 조사 수행
         from . import agent
+        from langgraph.errors import GraphRecursionError
 
         context = self.session.get_context()
         prompt = f"""다음 조사 단계를 수행하세요:
@@ -246,16 +247,33 @@ class ResearchAgent:
 
 현재 단계: {step}
 
-파일 시스템 도구를 사용하여 조사하고 발견한 내용을 정리하세요."""
+파일 시스템 도구를 사용하여 조사하고 발견한 내용을 정리하세요.
+도구 호출은 최소화하고, 핵심 정보만 수집하세요."""
 
         result_parts = []
 
-        for event_type, data in agent.stream(prompt, session_id="research_temp"):
-            if stream_callback:
-                stream_callback(event_type, data)
+        try:
+            for event_type, data in agent.stream(
+                prompt,
+                session_id="research_temp",
+                recursion_limit=config.RESEARCH_RECURSION_LIMIT,
+            ):
+                if stream_callback:
+                    stream_callback(event_type, data)
 
-            if event_type == "response":
-                result_parts.append(data)
+                if event_type == "response":
+                    result_parts.append(data)
+
+        except GraphRecursionError:
+            # 재귀 한도 초과 시 지금까지 수집한 결과 사용
+            logger.warning(
+                "조사 단계 '%s'에서 재귀 한도 초과. 부분 결과를 사용합니다.", step
+            )
+            if not result_parts:
+                result_parts.append(
+                    f"[조사 중단] 이 단계에서 도구 호출이 너무 많아 "
+                    f"재귀 한도({config.RESEARCH_RECURSION_LIMIT})를 초과했습니다."
+                )
 
         result = "".join(result_parts)
         self.session.findings.append(f"### {step}\n\n{result}")

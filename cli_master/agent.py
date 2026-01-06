@@ -459,18 +459,20 @@ def chat(message: str, session_id: str = "default") -> str:
     return result["messages"][-1].content
 
 
-def stream(message: str, session_id: str = "default"):
+def stream(message: str, session_id: str = "default", recursion_limit: int | None = None):
     """스트리밍 응답 생성 (메모리 지원)
 
     Args:
         message: 사용자 메시지
         session_id: 세션 ID (동일 ID면 대화 컨텍스트 유지)
+        recursion_limit: ReAct 루프 최대 반복 횟수 (기본값: config.DEFAULT_RECURSION_LIMIT)
 
     Yields:
         tuple: (event_type, data)
         - ("tool_start", {"name": str, "args": str}): 도구 호출 시작
         - ("tool_end", {"name": str, "result": str}): 도구 완료
         - ("response", str): 최종 응답
+        - ("error", str): 에러 발생 시
     """
     import asyncio
 
@@ -479,7 +481,11 @@ def stream(message: str, session_id: str = "default"):
         yield ("response", f"fake: {message}")
         return
 
-    runtime_config = {"configurable": {"thread_id": session_id}}
+    limit = recursion_limit or config.DEFAULT_RECURSION_LIMIT
+    runtime_config = {
+        "configurable": {"thread_id": session_id},
+        "recursion_limit": limit,
+    }
     initial_state = {"messages": [HumanMessage(content=message)]}
 
     response_chunks = []
