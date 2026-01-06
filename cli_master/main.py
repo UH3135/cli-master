@@ -80,11 +80,17 @@ def main():
 
     while handler.running:
         try:
+            # 리서치 모드일 때 프롬프트 변경
+            prompt_text = "[research] > " if handler.is_research_mode else "> "
+
             # 방향키 ↑/↓로 이전·다음 입력 탐색 가능
-            user_input = session.prompt()
+            user_input = session.prompt(prompt_text)
 
             if user_input.startswith("/"):
                 handler.handle(user_input)
+            elif handler.is_research_mode and user_input.strip():
+                # 리서치 모드에서는 입력을 리서치 핸들러로 전달
+                handler.process_research_input(user_input)
             elif user_input.strip():
                 logs = []
                 final_response = None
