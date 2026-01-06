@@ -5,9 +5,18 @@ import uuid
 
 from rich.console import Console
 from rich.table import Table
+from rich.panel import Panel
+from rich.markdown import Markdown
 from langchain_core.messages import AIMessage, HumanMessage
 
 from .repository import CheckpointRepository, PromptHistoryRepository
+from .researcher import (
+    ResearchSession,
+    ResearchAgent,
+    ResearchPhase,
+    create_research_session,
+    create_research_agent,
+)
 
 # 모듈 레벨 명령어 레지스트리: {name: (handler, description)}
 _commands: dict[str, tuple[Callable, str]] = {}
@@ -58,6 +67,10 @@ class CommandHandler:
         self._thread_cache: list[str] = []  # /threads 결과를 번호로 접근하기 위한 캐시
         self._current_thread_id = str(uuid.uuid4())  # 현재 대화 컨텍스트의 thread ID
 
+        # Research 모드 상태
+        self._research_session: ResearchSession | None = None
+        self._research_agent: ResearchAgent | None = None
+
     @property
     def running(self) -> bool:
         return self._running
@@ -70,6 +83,24 @@ class CommandHandler:
     def current_thread_id(self) -> str:
         """현재 대화 컨텍스트의 thread ID"""
         return self._current_thread_id
+
+    @property
+    def is_research_mode(self) -> bool:
+        """리서치 모드 활성화 여부"""
+        return (
+            self._research_session is not None
+            and self._research_session.phase != ResearchPhase.COMPLETED
+        )
+
+    @property
+    def research_session(self) -> ResearchSession | None:
+        """현재 리서치 세션"""
+        return self._research_session
+
+    @property
+    def research_agent(self) -> ResearchAgent | None:
+        """현재 리서치 에이전트"""
+        return self._research_agent
 
     def handle(self, command: str) -> bool:
         """명령어 처리. 알려진 명령어면 True 반환"""
@@ -231,3 +262,168 @@ class CommandHandler:
         self.console.print(
             f"[green]thread {thread_id}로 전환했습니다 (메시지 {len(user_messages)}건)[/green]"
         )
+
+    @command("research", "심층 검색 모드 시작")
+    def _research(self, arg: str = "") -> None:
+        """심층 검색(research) 모드 시작
+
+        사용법:
+            /research <주제>  - 지정한 주제로 리서치 시작
+            /research         - 주제 입력 요청
+        """
+        topic = arg.strip()
+
+        if not topic:
+            self.console.print("[yellow]조사할 주제를 입력해주세요.[/yellow]")
+            self.console.print("[dim]예: /research 이 프로젝트의 에러 핸들링 패턴[/dim]")
+            return
+
+        # 리서치 세션 시작
+        self._research_session = create_research_session(topic)
+        self._research_agent = create_research_agent(self._research_session)
+
+        self.console.print(
+            Panel(
+                f"[bold cyan]심층 검색 모드[/bold cyan]\n\n"
+                f"주제: [green]{topic}[/green]\n\n"
+                "[dim]더 정확한 조사를 위해 몇 가지 질문을 드리겠습니다.[/dim]",
+                title="Research Mode",
+                border_style="cyan",
+            )
+        )
+
+        # 명확화 질문 생성
+        self._generate_and_show_questions()
+
+    def _generate_and_show_questions(self) -> None:
+        """명확화 질문 생성 및 표시"""
+        if not self._research_agent:
+            return
+
+        self.console.print("\n[dim]질문 생성 중...[/dim]")
+        questions = self._research_agent.generate_clarifying_questions()
+
+        self.console.print("\n[bold yellow]다음 질문에 답변해주세요:[/bold yellow]\n")
+        for i, q in enumerate(questions, 1):
+            self.console.print(f"  [cyan]{i}.[/cyan] {q}")
+
+        self.console.print(
+            "\n[dim]각 질문에 대한 답변을 입력하세요. "
+            "(한 번에 모두 입력하거나, 번호별로 입력 가능)[/dim]"
+        )
+
+    def process_research_input(self, user_input: str) -> bool:
+        """리서치 모드에서 사용자 입력 처리
+
+        Args:
+            user_input: 사용자 입력
+
+        Returns:
+            True if handled, False otherwise
+        """
+        if not self.is_research_mode or not self._research_session:
+            return False
+
+        session = self._research_session
+        agent = self._research_agent
+
+        if not agent:
+            return False
+
+        # 현재 단계에 따라 처리
+        if session.phase == ResearchPhase.CLARIFYING:
+            return self._handle_clarifying_answer(user_input)
+
+        return False
+
+    def _handle_clarifying_answer(self, answer: str) -> bool:
+        """명확화 질문에 대한 답변 처리"""
+        if not self._research_session or not self._research_agent:
+            return False
+
+        session = self._research_session
+        agent = self._research_agent
+
+        # 답변 저장
+        session.user_answers.append(answer.strip())
+
+        # 모든 질문에 답변했는지 확인
+        if len(session.user_answers) < len(session.clarifying_questions):
+            remaining = len(session.clarifying_questions) - len(session.user_answers)
+            self.console.print(
+                f"\n[dim]답변이 저장되었습니다. 남은 질문: {remaining}개[/dim]"
+            )
+            return True
+
+        # 모든 답변 완료 - 계획 수립 단계로 진행
+        self.console.print("\n[dim]조사 계획을 수립하고 있습니다...[/dim]")
+
+        plan = agent.generate_plan()
+
+        self.console.print("\n[bold green]조사 계획:[/bold green]\n")
+        for i, step in enumerate(plan, 1):
+            self.console.print(f"  [cyan]{i}.[/cyan] {step}")
+
+        self.console.print(
+            "\n[dim]계획을 실행합니다. 잠시만 기다려주세요...[/dim]\n"
+        )
+
+        # 각 단계 실행
+        self._execute_research_plan()
+
+        return True
+
+    def _execute_research_plan(self) -> None:
+        """조사 계획 실행"""
+        if not self._research_session or not self._research_agent:
+            return
+
+        session = self._research_session
+        agent = self._research_agent
+
+        from rich.live import Live
+        from rich.text import Text
+
+        # 각 단계 실행
+        for i, step in enumerate(session.plan):
+            self.console.print(f"\n[bold cyan]단계 {i + 1}:[/bold cyan] {step}")
+
+            logs = []
+
+            def stream_callback(event_type: str, data: dict) -> None:
+                if event_type == "tool_start":
+                    logs.append(f"  ⚙ {data['name']} 실행 중...")
+                elif event_type == "tool_end":
+                    result = data["result"][:60] + "..." if len(data["result"]) > 60 else data["result"]
+                    logs.append(f"    ✓ 완료: {result}")
+
+            with Live(Text("분석 중...", style="dim"), transient=True) as live:
+                agent.execute_step(i, stream_callback)
+                if logs:
+                    live.update(Text("\n".join(logs), style="dim"))
+
+            self.console.print("  [green]✓ 완료[/green]")
+
+        # 보고서 생성
+        self.console.print("\n[dim]보고서를 생성하고 있습니다...[/dim]")
+        report = agent.generate_report()
+
+        # 보고서 저장
+        filepath = agent.save_report()
+
+        # 결과 출력
+        self.console.print("\n")
+        self.console.print(
+            Panel(
+                Markdown(report),
+                title="[bold cyan]리서치 보고서[/bold cyan]",
+                border_style="cyan",
+            )
+        )
+
+        self.console.print(f"\n[green]✓ 보고서가 저장되었습니다: {filepath}[/green]")
+        self.console.print("[dim]리서치 모드가 종료되었습니다.[/dim]\n")
+
+        # 세션 정리
+        self._research_session = None
+        self._research_agent = None
