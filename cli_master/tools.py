@@ -7,6 +7,7 @@ from datetime import datetime
 
 from langchain_core.tools import tool, BaseTool
 from .models import TodoItem, TodoStatus
+from .safe_path import validate_path, OperationType
 
 
 @tool
@@ -19,6 +20,11 @@ def cat(file_path: str) -> str:
     Returns:
         파일 내용 또는 오류 메시지
     """
+    # 경로 검증
+    result = validate_path(file_path, OperationType.READ)
+    if not result.allowed:
+        return f"접근 거부: {result.reason}"
+
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             content = f.read()
@@ -42,6 +48,10 @@ def tree(path: str = ".", max_depth: int = 3) -> str:
     Returns:
         디렉토리 트리 구조
     """
+    # 경로 검증
+    validation = validate_path(path, OperationType.READ)
+    if not validation.allowed:
+        return f"접근 거부: {validation.reason}"
 
     def build_tree(dir_path: str, prefix: str = "", depth: int = 0) -> list:
         if depth >= max_depth:
@@ -61,6 +71,12 @@ def tree(path: str = ".", max_depth: int = 3) -> str:
             is_last = i == len(entries) - 1
             connector = "└── " if is_last else "├── "
             entry_path = os.path.join(dir_path, entry)
+
+            # 하위 경로도 검증
+            sub_validation = validate_path(entry_path, OperationType.READ)
+            if not sub_validation.allowed:
+                lines.append(f"{prefix}{connector}{entry} [접근 차단]")
+                continue
 
             if os.path.isdir(entry_path):
                 lines.append(f"{prefix}{connector}{entry}/")
@@ -94,12 +110,22 @@ def grep(pattern: str, path: str = ".", file_pattern: str = "*") -> str:
     Returns:
         검색 결과 (파일 경로와 줄 번호 포함)
     """
+    # 시작 경로 검증
+    validation = validate_path(path, OperationType.READ)
+    if not validation.allowed:
+        return f"접근 거부: {validation.reason}"
+
     results = []
     pattern_re = re.compile(pattern)
 
     search_pattern = os.path.join(path, "**", file_pattern)
     for file_path in glob_module.glob(search_pattern, recursive=True):
         if os.path.isfile(file_path):
+            # 각 파일 경로 검증
+            file_validation = validate_path(file_path, OperationType.READ)
+            if not file_validation.allowed:
+                continue  # 차단된 파일은 건너뜀
+
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     for line_num, line in enumerate(f, 1):
