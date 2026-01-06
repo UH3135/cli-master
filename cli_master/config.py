@@ -5,6 +5,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from .safe_path import FileAccessPolicy
+
 # .env 파일 로드
 load_dotenv()
 
@@ -40,6 +42,39 @@ class Config:
         self.MODEL_TEMPERATURE = float(os.getenv("MODEL_TEMPERATURE", "0.7"))
         # 테스트용 가짜 LLM 모드
         self.FAKE_LLM = os.getenv("CLI_MASTER_FAKE_LLM", "0") == "1"
+
+        # 파일 접근 정책
+        self.FILE_ACCESS_POLICY = self._build_file_access_policy()
+
+    def _build_file_access_policy(self) -> FileAccessPolicy:
+        """환경 변수 기반 파일 접근 정책 생성"""
+        policy = FileAccessPolicy.default(working_dir=self.PROJECT_ROOT)
+
+        # 환경 변수로 추가 읽기 허용 경로 설정
+        # 예: ALLOWED_READ_PATHS=/home/user/docs:/home/user/projects
+        extra_read_paths = os.getenv("ALLOWED_READ_PATHS", "")
+        if extra_read_paths:
+            for path_str in extra_read_paths.split(":"):
+                if path_str.strip():
+                    policy.allowed_read_paths.append(Path(path_str.strip()))
+
+        # 환경 변수로 추가 쓰기 허용 경로 설정
+        # 예: ALLOWED_WRITE_PATHS=/home/user/output
+        extra_write_paths = os.getenv("ALLOWED_WRITE_PATHS", "")
+        if extra_write_paths:
+            for path_str in extra_write_paths.split(":"):
+                if path_str.strip():
+                    policy.allowed_write_paths.append(Path(path_str.strip()))
+
+        # 추가 블랙리스트 경로
+        # 예: BLACKLISTED_PATHS=/sensitive/data
+        extra_blacklist = os.getenv("BLACKLISTED_PATHS", "")
+        if extra_blacklist:
+            for path_str in extra_blacklist.split(":"):
+                if path_str.strip():
+                    policy.blacklisted_paths.append(Path(path_str.strip()))
+
+        return policy
 
 
 config = Config()
