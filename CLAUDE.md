@@ -43,26 +43,35 @@
 
 ```
 cli_master/
-  main.py        # 진입점 (조립만)
-  agent.py       # AI 에이전트 (LangGraph 기반)
-  commands.py    # 슬래시 명령어 처리
-  models.py      # 데이터 모델
-  completer.py   # 자동완성
-  config.py      # 설정 관리
-  log.py         # 로깅 설정
-  tools.py       # 커스텀 도구
-  registry.py    # 도구 레지스트리 (중앙 집중식 도구 관리)
-  repository/    # 데이터 저장소 계층 (Repository 패턴)
-    __init__.py
-    checkpoint.py      # 체크포인트 저장소
-    prompt_history.py  # 프롬프트 히스토리 저장소
+├── main.py                  # 진입점 (조립만)
+├── cli/                     # CLI 계층 - 사용자 인터페이스
+│   ├── commands.py          # 슬래시 명령어 처리
+│   └── completer.py         # 자동완성
+├── ai/                      # AI 계층 - 에이전트 및 도구
+│   ├── agent.py             # LangGraph 에이전트
+│   ├── researcher.py        # 심층 검색(Research) 에이전트
+│   └── tools/               # 도구 서브패키지
+│       ├── registry.py      # 도구 레지스트리
+│       ├── filesystem.py    # 파일시스템 도구 (cat, tree, grep)
+│       └── todo.py          # TODO 관리 도구
+├── core/                    # 공통 계층 - 설정 및 모델
+│   ├── config.py            # 설정 관리
+│   ├── log.py               # 로깅 설정
+│   ├── models.py            # 데이터 모델
+│   └── safe_path.py         # 안전한 파일 경로 검증
+└── repository/              # 저장소 계층 (Repository 패턴)
+    ├── checkpoint.py        # 체크포인트 저장소
+    └── prompt_history.py    # 프롬프트 히스토리 저장소
 ```
 
 ### Architecture Rules
 
+- **계층 분리**: CLI, AI, Core, Repository 계층으로 관심사 분리
 - **main.py는 조립(Composition) 전용**: 모듈을 조립하고 실행하는 역할만 수행
-- 비즈니스 로직 작성 금지
-- 새로운 기능은 반드시 `cli_master/` 하위 모듈에 구현
+- **CLI 계층**: 사용자 입출력 처리만 담당
+- **AI 계층**: 에이전트 로직과 도구 관리
+- **Core 계층**: 공통 설정, 모델, 유틸리티
+- 새로운 기능은 적절한 계층의 모듈에 구현
 
 ---
 
@@ -132,7 +141,7 @@ ToolRegistry는 옵저버/레지스트리 패턴 기반의 중앙 집중식 도�
 
 ### ToolRegistry 클래스
 
-**위치**: `cli_master/registry.py`
+**위치**: `cli_master/ai/tools/registry.py`
 
 **핵심 메서드**:
 ```python
@@ -173,7 +182,7 @@ class ToolRegistry:
 
 **사용 예시**:
 ```python
-from cli_master.registry import get_registry, ToolCategory
+from cli_master.ai.tools.registry import get_registry, ToolCategory
 
 registry = get_registry()
 
@@ -201,17 +210,18 @@ class ToolCategory:
 
 #### 1. 커스텀 도구 추가
 
-**단계 1**: `tools.py`에 `@tool` 데코레이터로 함수 정의
+**단계 1**: `ai/tools/` 하위에 도구 파일 생성 또는 기존 파일에 `@tool` 데코레이터로 함수 정의
 ```python
+# ai/tools/filesystem.py 또는 ai/tools/todo.py
 @tool
 def my_custom_tool(arg: str) -> str:
     """새로운 커스텀 도구"""
     return f"Result: {arg}"
 ```
 
-**단계 2**: `_auto_register_tools()` 함수에 등록 추가
+**단계 2**: `ai/tools/__init__.py`의 `register_all_tools()` 함수에 등록 추가
 ```python
-def _auto_register_tools():
+def register_all_tools():
     registry = get_registry()
     # ... 기존 등록들
     registry.register(my_custom_tool, category=ToolCategory.CUSTOM)
@@ -221,7 +231,7 @@ def _auto_register_tools():
 
 #### 2. LangChain 도구 추가
 
-LangChain 도구는 `agent.py`의 `_build_graph()` 함수에서 자동으로 등록됩니다:
+LangChain 도구는 `ai/agent.py`의 `_build_graph()` 함수에서 자동으로 등록됩니다:
 ```python
 # FileManagementToolkit 도구들이 자동 등록됨
 toolkit = FileManagementToolkit(...)
@@ -232,6 +242,8 @@ registry.register_multiple(toolkit.get_tools(), category=ToolCategory.FILESYSTEM
 
 환경 변수나 설정을 통해 특정 도구를 비활성화할 수 있습니다:
 ```python
+from cli_master.ai.tools.registry import get_registry
+
 registry = get_registry()
 registry.disable_tool("write_file")  # 쓰기 도구 비활성화
 ```
