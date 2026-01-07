@@ -20,7 +20,7 @@ import aiosqlite
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import StateGraph, END
 
-from .config import config
+from .core.config import config
 
 # provider 매핑 (모델명 prefix -> factory 함수)
 PROVIDER_MAP = {

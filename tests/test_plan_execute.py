@@ -316,9 +316,9 @@ class TestStreamEvents:
     @pytest.fixture(autouse=True)
     def setup_fake_llm(self, monkeypatch):
         """테스트 시 FAKE_LLM 활성화"""
-        from cli_master import config as cfg_module
+        from cli_master.core import config as cfg_module
 
-        monkeypatch.setattr(cfg_module.config, "FAKE_LLM", True)
+        monkeypatch.setattr(cfg_module, "FAKE_LLM", True)
 
     def test_stream_response_event_for_simple(self):
         """단순 요청 시 response 이벤트 발생 확인"""

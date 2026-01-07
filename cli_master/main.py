@@ -9,8 +9,8 @@ from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.document import Document
 from .commands import CommandHandler, get_command_names
 from .completer import SlashCompleter
-from .config import config
-from .log import setup_logging
+from .core.config import config
+from .core.log import setup_logging
 from .repository import CheckpointRepository, PromptHistoryRepository
 from . import agent
 

@@ -6,8 +6,8 @@ import glob as glob_module
 from datetime import datetime
 
 from langchain_core.tools import tool, BaseTool
-from .models import TodoItem, TodoStatus
-from .safe_path import validate_path, OperationType
+from .core.models import TodoItem, TodoStatus
+from .core.safe_path import validate_path, OperationType
 
 
 @tool

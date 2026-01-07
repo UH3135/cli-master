@@ -8,7 +8,7 @@ import pytest
 from rich.console import Console
 
 from cli_master.commands import CommandHandler
-from cli_master.config import config
+from cli_master.core.config import config
 from cli_master.repository import CheckpointRepository, PromptHistoryRepository
 from cli_master.researcher import (
     ResearchPhase,

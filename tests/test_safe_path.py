@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from cli_master.safe_path import (
+from cli_master.core.safe_path import (
     FileAccessPolicy,
     OperationType,
     PathValidationResult,
