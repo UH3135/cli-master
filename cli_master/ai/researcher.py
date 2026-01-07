@@ -19,7 +19,7 @@ from typing import Callable
 from langchain_core.messages import HumanMessage, SystemMessage
 from loguru import logger
 
-from .core.config import config
+from cli_master.core.config import config
 
 
 class ResearchPhase(Enum):

@@ -7,10 +7,10 @@ from pathlib import Path
 import pytest
 from rich.console import Console
 
-from cli_master.commands import CommandHandler
+from cli_master.cli.commands import CommandHandler
 from cli_master.core.config import config
 from cli_master.repository import CheckpointRepository, PromptHistoryRepository
-from cli_master.researcher import (
+from cli_master.ai.researcher import (
     ResearchPhase,
     create_research_session,
     create_research_agent,

@@ -5,8 +5,7 @@ from pathlib import Path
 from langchain_core.messages import AIMessage, HumanMessage
 from rich.console import Console
 
-from cli_master.commands import CommandHandler
-from cli_master.config import config
+from cli_master.cli.commands import CommandHandler
 from cli_master.repository import CheckpointRepository, PromptHistoryRepository
 from tests.e2e_helpers import seed_checkpoint_db
 

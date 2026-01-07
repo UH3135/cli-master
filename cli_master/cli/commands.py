@@ -9,8 +9,8 @@ from rich.panel import Panel
 from rich.markdown import Markdown
 from langchain_core.messages import AIMessage, HumanMessage
 
-from .repository import CheckpointRepository, PromptHistoryRepository
-from .researcher import (
+from cli_master.repository import CheckpointRepository, PromptHistoryRepository
+from cli_master.ai.researcher import (
     ResearchSession,
     ResearchAgent,
     ResearchPhase,

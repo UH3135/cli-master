@@ -20,7 +20,7 @@ import aiosqlite
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import StateGraph, END
 
-from .core.config import config
+from cli_master.core.config import config
 
 # provider 매핑 (모델명 prefix -> factory 함수)
 PROVIDER_MAP = {
@@ -320,7 +320,7 @@ def _build_graph(checkpointer):
     )
 
     # 2. 도구 준비 (Registry 사용)
-    from .ai.tools.registry import get_registry, ToolCategory
+    from .tools.registry import get_registry, ToolCategory
 
     registry = get_registry()
 

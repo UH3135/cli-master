@@ -9,14 +9,14 @@ class TestPlanModel:
 
     def test_plan_with_steps(self):
         """Plan 모델이 단계 리스트를 정상 저장하는지 확인"""
-        from cli_master.models import Plan
+        from cli_master.core.models import Plan
 
         plan = Plan(steps=["1단계", "2단계"])
         assert plan.steps == ["1단계", "2단계"]
 
     def test_plan_empty_steps(self):
         """빈 계획도 유효하게 처리되는지 확인"""
-        from cli_master.models import Plan
+        from cli_master.core.models import Plan
 
         plan = Plan(steps=[])
         assert plan.steps == []
@@ -27,7 +27,7 @@ class TestResponseModel:
 
     def test_response_with_content(self):
         """Response 모델이 응답 문자열을 저장하는지 확인"""
-        from cli_master.models import Response
+        from cli_master.core.models import Response
 
         resp = Response(response="완료되었습니다")
         assert resp.response == "완료되었습니다"
@@ -38,14 +38,14 @@ class TestActModel:
 
     def test_act_with_response(self):
         """Act가 Response 타입을 올바르게 래핑하는지 확인"""
-        from cli_master.models import Act, Response
+        from cli_master.core.models import Act, Response
 
         act = Act(action=Response(response="완료"))
         assert isinstance(act.action, Response)
 
     def test_act_with_plan(self):
         """Act가 Plan 타입을 올바르게 래핑하는지 확인 (재계획 시나리오)"""
-        from cli_master.models import Act, Plan
+        from cli_master.core.models import Act, Plan
 
         act = Act(action=Plan(steps=["새 단계"]))
         assert isinstance(act.action, Plan)
@@ -56,7 +56,7 @@ class TestPlanExecuteState:
 
     def test_state_has_required_fields(self):
         """State가 Plan-Execute에 필요한 모든 필드를 포함하는지 확인"""
-        from cli_master.agent import PlanExecuteState
+        from cli_master.ai.agent import PlanExecuteState
 
         state: PlanExecuteState = {
             "messages": [],
@@ -85,25 +85,25 @@ class TestClassifyRequest:
 
     def test_simple_greeting(self):
         """짧은 인사말은 기존 ReAct로 빠르게 처리"""
-        from cli_master.agent import classify_request
+        from cli_master.ai.agent import classify_request
 
         assert classify_request("안녕하세요") == "simple"
 
     def test_simple_question(self):
         """단순 질문은 계획 없이 바로 응답"""
-        from cli_master.agent import classify_request
+        from cli_master.ai.agent import classify_request
 
         assert classify_request("오늘 날씨 어때?") == "simple"
 
     def test_complex_task(self):
         """다단계 작업은 Plan-Execute 패턴으로 처리"""
-        from cli_master.agent import classify_request
+        from cli_master.ai.agent import classify_request
 
         assert classify_request("프로젝트 구조를 분석하고 README를 업데이트해줘") == "complex"
 
     def test_file_operation(self):
         """여러 파일 조작은 계획이 필요한 복잡한 작업"""
-        from cli_master.agent import classify_request
+        from cli_master.ai.agent import classify_request
 
         assert classify_request("src 폴더의 모든 파일을 읽고 요약해줘") == "complex"
 
@@ -125,7 +125,7 @@ class TestPlanStep:
 
     def test_plan_step_generates_plan(self, initial_state):
         """Planner가 사용자 요청을 분석하여 실행 가능한 단계들을 생성"""
-        from cli_master.agent import plan_step
+        from cli_master.ai.agent import plan_step
 
         result = plan_step(initial_state)
         assert "plan" in result
@@ -134,7 +134,7 @@ class TestPlanStep:
 
     def test_plan_step_initializes_index(self, initial_state):
         """계획 생성 시 실행 인덱스가 0부터 시작"""
-        from cli_master.agent import plan_step
+        from cli_master.ai.agent import plan_step
 
         result = plan_step(initial_state)
         assert result.get("current_step_index", 0) == 0
@@ -145,7 +145,7 @@ class TestExecuteStep:
 
     def test_execute_first_step(self):
         """첫 단계 실행: 인덱스 증가 + past_steps 기록"""
-        from cli_master.agent import execute_step
+        from cli_master.ai.agent import execute_step
 
         state = {
             "messages": [],
@@ -162,7 +162,7 @@ class TestExecuteStep:
 
     def test_execute_increments_index(self):
         """두 번째 단계 실행: 인덱스가 2가 되는지"""
-        from cli_master.agent import execute_step
+        from cli_master.ai.agent import execute_step
 
         state = {
             "messages": [],
@@ -178,7 +178,7 @@ class TestExecuteStep:
 
     def test_execute_records_result(self):
         """실행 결과가 (단계명, 결과) 튜플 형태로 저장"""
-        from cli_master.agent import execute_step
+        from cli_master.ai.agent import execute_step
 
         state = {
             "messages": [],
@@ -200,7 +200,7 @@ class TestReplanStep:
 
     def test_replan_returns_response_when_complete(self):
         """모든 단계 성공 완료 시 최종 응답 반환"""
-        from cli_master.agent import replan_step
+        from cli_master.ai.agent import replan_step
 
         state = {
             "messages": [],
@@ -216,7 +216,7 @@ class TestReplanStep:
 
     def test_replan_generates_new_plan(self):
         """실패 또는 추가 작업 필요 시 새 계획 생성"""
-        from cli_master.agent import replan_step
+        from cli_master.ai.agent import replan_step
 
         state = {
             "messages": [],
@@ -233,7 +233,7 @@ class TestReplanStep:
 
     def test_replan_limit_reached(self):
         """재계획 3회 도달 시 강제 종료 (무한 루프 방지)"""
-        from cli_master.agent import replan_step
+        from cli_master.ai.agent import replan_step
 
         state = {
             "messages": [],
@@ -249,7 +249,7 @@ class TestReplanStep:
 
     def test_replan_increments_count(self):
         """재계획 발생 시 카운트 증가"""
-        from cli_master.agent import replan_step
+        from cli_master.ai.agent import replan_step
 
         state = {
             "messages": [],
@@ -271,14 +271,14 @@ class TestHybridGraph:
 
     def test_build_hybrid_graph_compiles(self):
         """_build_hybrid_graph()가 에러 없이 컴파일되는지 확인"""
-        from cli_master.agent import _build_hybrid_graph
+        from cli_master.ai.agent import _build_hybrid_graph
 
         graph = _build_hybrid_graph(checkpointer=None)
         assert graph is not None
 
     def test_hybrid_graph_has_router_node(self):
         """하이브리드 그래프에 router 노드가 존재하는지 확인"""
-        from cli_master.agent import _build_hybrid_graph
+        from cli_master.ai.agent import _build_hybrid_graph
 
         graph = _build_hybrid_graph(checkpointer=None)
         # 컴파일된 그래프의 노드 확인
@@ -287,7 +287,7 @@ class TestHybridGraph:
 
     def test_hybrid_graph_has_planner_node(self):
         """하이브리드 그래프에 planner 노드가 존재하는지 확인"""
-        from cli_master.agent import _build_hybrid_graph
+        from cli_master.ai.agent import _build_hybrid_graph
 
         graph = _build_hybrid_graph(checkpointer=None)
         node_names = list(graph.nodes.keys())
@@ -295,7 +295,7 @@ class TestHybridGraph:
 
     def test_hybrid_graph_has_executor_node(self):
         """하이브리드 그래프에 executor 노드가 존재하는지 확인"""
-        from cli_master.agent import _build_hybrid_graph
+        from cli_master.ai.agent import _build_hybrid_graph
 
         graph = _build_hybrid_graph(checkpointer=None)
         node_names = list(graph.nodes.keys())
@@ -303,7 +303,7 @@ class TestHybridGraph:
 
     def test_hybrid_graph_has_replanner_node(self):
         """하이브리드 그래프에 replanner 노드가 존재하는지 확인"""
-        from cli_master.agent import _build_hybrid_graph
+        from cli_master.ai.agent import _build_hybrid_graph
 
         graph = _build_hybrid_graph(checkpointer=None)
         node_names = list(graph.nodes.keys())
@@ -322,7 +322,7 @@ class TestStreamEvents:
 
     def test_stream_response_event_for_simple(self):
         """단순 요청 시 response 이벤트 발생 확인"""
-        from cli_master.agent import stream_hybrid
+        from cli_master.ai.agent import stream_hybrid
 
         events = list(stream_hybrid("안녕"))
         event_types = [e[0] for e in events]
@@ -330,7 +330,7 @@ class TestStreamEvents:
 
     def test_stream_plan_start_event_for_complex(self):
         """복잡한 요청 시 plan_start 이벤트 발생 확인"""
-        from cli_master.agent import stream_hybrid
+        from cli_master.ai.agent import stream_hybrid
 
         events = list(stream_hybrid("프로젝트를 분석하고 README를 업데이트해줘"))
         event_types = [e[0] for e in events]
@@ -338,7 +338,7 @@ class TestStreamEvents:
 
     def test_stream_step_events_for_complex(self):
         """복잡한 요청 시 step_start/step_end 이벤트 발생 확인"""
-        from cli_master.agent import stream_hybrid
+        from cli_master.ai.agent import stream_hybrid
 
         events = list(stream_hybrid("파일을 읽고 요약해줘"))
         event_types = [e[0] for e in events]
@@ -348,7 +348,7 @@ class TestStreamEvents:
 
     def test_stream_plan_start_contains_steps(self):
         """plan_start 이벤트에 계획 단계가 포함되는지 확인"""
-        from cli_master.agent import stream_hybrid
+        from cli_master.ai.agent import stream_hybrid
 
         events = list(stream_hybrid("프로젝트를 분석하고 문서를 수정해줘"))
         plan_events = [e for e in events if e[0] == "plan_start"]
