@@ -2,7 +2,7 @@
 
 from langchain_core.tools import tool
 
-from cli_master.registry import ToolRegistry, ToolCategory, get_registry
+from cli_master.ai.tools.registry import ToolRegistry, ToolCategory, get_registry
 
 
 def test_registry_singleton():

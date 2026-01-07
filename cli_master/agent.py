@@ -320,7 +320,7 @@ def _build_graph(checkpointer):
     )
 
     # 2. 도구 준비 (Registry 사용)
-    from .registry import get_registry, ToolCategory
+    from .ai.tools.registry import get_registry, ToolCategory
 
     registry = get_registry()
 
