@@ -545,6 +545,9 @@ def stream(message: str, session_id: str = "default"):
     created_new_loop = False
     try:
         loop = asyncio.get_event_loop()
+        # 닫힌 루프인 경우 새로 생성
+        if loop.is_closed():
+            raise RuntimeError("Event loop is closed")
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
