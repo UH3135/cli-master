@@ -103,7 +103,11 @@ def main():
                     for event_type, data in agent.stream(
                         user_input, session_id=handler.current_thread_id
                     ):
-                        if event_type == "tool_start":
+                        if event_type == "node_transition":
+                            flow = f"[{data['from']} → {data['to']}]"
+                            logs.append(f"📍 {flow}")
+                            live.update(Text("\n".join(logs), style="dim"))
+                        elif event_type == "tool_start":
                             args_str = truncate(data["args"])
                             logs.append(f"⚙ {data['name']} 실행 중...\n  → {args_str}")
                             live.update(Text("\n".join(logs), style="dim"))

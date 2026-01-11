@@ -59,11 +59,26 @@ DEFAULT_SYSTEM_PROMPT = """당신은 CLI Master의 AI 어시스턴트입니다.
 - 한국어로 응답합니다."""
 
 
+# 커스텀 리듀서 함수
+def add_tool_executions(left: list | None, right: list | None) -> list:
+    """도구 실행 내역 누적 리듀서"""
+    return (left or []) + (right or [])
+
+
+def add_node_transitions(left: list | None, right: list | None) -> list:
+    """노드 전환 내역 누적 리듀서"""
+    return (left or []) + (right or [])
+
+
 # State 정의
 class AgentState(TypedDict):
     """LangGraph 에이전트 상태"""
 
     messages: Annotated[Sequence[BaseMessage], add]
+    # 도구 실행 내역 (UI 표시용)
+    tool_executions: Annotated[list[dict], add_tool_executions]
+    # 노드 실행 흐름 (UI 표시용)
+    node_flow: Annotated[list[dict], add_node_transitions]
 
 
 class PlanExecuteState(TypedDict):
@@ -353,6 +368,8 @@ def _build_graph(checkpointer):
     # 4. 노드 정의
     def call_model(state: AgentState):
         """에이전트 노드: 도구와 함께 모델 호출"""
+        from datetime import datetime
+
         messages = state["messages"]
 
         # 첫 턴일 경우 시스템 프롬프트 주입
@@ -360,10 +377,25 @@ def _build_graph(checkpointer):
             messages = [SystemMessage(content=DEFAULT_SYSTEM_PROMPT)] + list(messages)
 
         response = model_with_tools.invoke(messages)
-        return {"messages": [response]}
+
+        # 노드 흐름 기록: 이전 노드 → agent
+        node_flow = state.get("node_flow", [])
+        previous_node = "__start__" if len(node_flow) == 0 else "tools"
+        node_transition = {
+            "from_node": previous_node,
+            "to_node": "agent",
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        return {
+            "messages": [response],
+            "node_flow": [node_transition],
+        }
 
     def execute_tools(state: AgentState):
         """도구 노드: 요청된 도구 실행"""
+        from datetime import datetime
+
         messages = state["messages"]
         last_message = messages[-1]
 
@@ -373,38 +405,74 @@ def _build_graph(checkpointer):
         tool_calls = last_message.tool_calls
 
         tool_messages = []
+        tool_executions = []  # 도구 실행 내역 수집
+
         for tool_call in tool_calls:
             tool = tools_by_name.get(tool_call["name"])
             if not tool:
+                error_msg = f"오류: 도구 '{tool_call['name']}'를 찾을 수 없습니다"
                 tool_messages.append(
                     ToolMessage(
-                        content=f"오류: 도구 '{tool_call['name']}'를 찾을 수 없습니다",
+                        content=error_msg,
                         tool_call_id=tool_call["id"],
                         name=tool_call["name"],
                     )
                 )
+                tool_executions.append({
+                    "name": tool_call["name"],
+                    "result": error_msg,
+                    "success": False,
+                    "timestamp": datetime.now().isoformat(),
+                })
                 continue
 
             try:
                 result = tool.invoke(tool_call["args"])
+                result_str = str(result)
                 tool_messages.append(
                     ToolMessage(
-                        content=str(result),
+                        content=result_str,
                         tool_call_id=tool_call["id"],
                         name=tool_call["name"],
                     )
                 )
+                # 결과 축약 (200자)
+                truncated = result_str[:200] + "..." if len(result_str) > 200 else result_str
+                tool_executions.append({
+                    "name": tool_call["name"],
+                    "result": truncated,
+                    "success": True,
+                    "timestamp": datetime.now().isoformat(),
+                })
             except Exception as e:
                 logger.error("Tool execution error: {}", str(e))
+                error_msg = f"오류: {str(e)}"
                 tool_messages.append(
                     ToolMessage(
-                        content=f"오류: {str(e)}",
+                        content=error_msg,
                         tool_call_id=tool_call["id"],
                         name=tool_call["name"],
                     )
                 )
+                tool_executions.append({
+                    "name": tool_call["name"],
+                    "result": error_msg,
+                    "success": False,
+                    "timestamp": datetime.now().isoformat(),
+                })
 
-        return {"messages": tool_messages}
+        # 노드 흐름 기록: agent → tools
+        node_transition = {
+            "from_node": "agent",
+            "to_node": "tools",
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        return {
+            "messages": tool_messages,
+            "tool_executions": tool_executions,
+            "node_flow": [node_transition],
+        }
 
     def should_continue(state: AgentState):
         """라우팅 로직"""
@@ -470,6 +538,7 @@ def stream(message: str, session_id: str = "default"):
         tuple: (event_type, data)
         - ("tool_start", {"name": str, "args": str}): 도구 호출 시작
         - ("tool_end", {"name": str, "result": str}): 도구 완료
+        - ("node_transition", {"from": str, "to": str}): 노드 전환
         - ("response", str): 최종 응답
     """
     import asyncio
@@ -484,9 +553,12 @@ def stream(message: str, session_id: str = "default"):
 
     response_chunks = []
     current_tool_calls = {}
+    last_node = "__start__"  # 노드 흐름 추적용
 
     async def _async_stream():
         """내부 비동기 스트리밍"""
+        nonlocal last_node
+
         async with aiosqlite.connect(str(config.CHECKPOINT_DB_PATH)) as conn:
             # langgraph-checkpoint-sqlite가 기대하는 is_alive가 없으면 보완
             if not hasattr(conn, "is_alive"):
@@ -499,7 +571,14 @@ def stream(message: str, session_id: str = "default"):
             ):
                 kind = event["event"]
 
-                if kind == "on_tool_start":
+                # 노드 전환 이벤트 처리
+                if kind == "on_chain_start":
+                    node_name = event.get("name", "")
+                    if node_name in ("agent", "tools"):
+                        yield ("node_transition", {"from": last_node, "to": node_name})
+                        last_node = node_name
+
+                elif kind == "on_tool_start":
                     tool_name = event.get("name", "unknown")
                     tool_input = event.get("data", {}).get("input", {})
                     args_str = str(tool_input) if tool_input else ""
